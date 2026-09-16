@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+  <html lang="en">
+  <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Photo Collage Maker</title>
+<style>
+  :root{
+    --border-color:#a855f7;
+    --border-width:10px;
+    --bg:#f4f4f6;
+          --card:#ffffff;
+          --ink:#1c1c22;
+    --muted:#6b6b76;
+    --accent:#7c3aed;
+    --accent-2:#f43f5e;
+      }
+  *{box-sizing:border-box;}
+  body{
+        margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+    padding:24px 16px 60px;
+}
+  h1{
+        font-size:20px;
+    margin:0 0 4px;
+    text-align:center;
+}
+  .subtitle{
+        text-align:center;
+    color:var(--muted);
+    font-size:13px;
+    margin:0 0 24px;
+}
+  .app{
+        max-width:920px;
+    margin:0 auto;
+    display:grid;
+    grid-template-columns:1fr;
+    gap:20px;
+}
+  @media (min-width:760px){
+    .app{
+            grid-template-columns:minmax(0,1fr) 260px;
+      align-items:start;
+}
+}
+  .stage{
+        background:var(--card);
+    border-radius:16px;
+    padding:20px;
+    box-shadow:0 1px 3px rgba(0,0,0,.06), 0 10px 30px rgba(0,0,0,.04);
+  }
+  .frame-wrap{
+        display:flex;
+    justify-content:center;
+}
+  .frame{
+        background:var(--border-color);
+    padding:var(--border-width);
+    display:grid;
+    gap:var(--border-width);
+    width:100%;
+    max-width:420px;
+    border-radius:4px;
+    overflow:hidden;
+}
+  .frame.shape-square{ aspect-ratio:1/1; }
+  .frame.shape-portrait{ aspect-ratio:3/4; }
+  .frame.shape-landscape{ aspect-ratio:4/3; }
+
+  .frame.layout-1{ grid-template-columns:1fr; grid-template-areas:"a"; }
+  .frame.layout-2v{ grid-template-columns:1fr 1fr; grid-template-areas:"a b"; }
+  .frame.layout-2h{ grid-template-columns:1fr; grid-template-rows:1fr 1fr; grid-template-areas:"a" "b"; }
+  .frame.layout-3l{ grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; grid-template-areas:"a b" "a c"; }
+  .frame.layout-3t{ grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; grid-template-areas:"a a" "b c"; }
+  .frame.layout-4{ grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; grid-template-areas:"a b" "c d"; }
+  .frame.layout-3v{ grid-template-columns:1fr 1fr 1fr; grid-template-areas:"a b c"; }
+  .frame.layout-4v{ grid-template-columns:1fr 1fr 1fr 1fr; grid-template-areas:"a b c d"; }
+  .frame.layout-5v{ grid-template-columns:1fr 1fr 1fr 1fr 1fr; grid-template-areas:"a b c d e"; }
+
+  .slot{
+        position:relative;
+    background:#e8e8ec;
+        background-repeat:no-repeat;
+    overflow:hidden;
+    min-height:0;
+    min-width:0;
+    cursor:pointer;
+    touch-action:none;
+  }
+  .slot.hidden{ display:none; }
+  .slot .empty-hint{
+        position:absolute;
+    inset:0;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:6px;
+    color:#9a9aa5;
+    font-size:12px;
+    pointer-events:none;
+}
+  .slot .empty-hint .plus{
+    font-size:26px;
+    line-height:1;
+    font-weight:300;
+  }
+  .slot.filled{ cursor:grab; }
+  .slot.filled:active{ cursor:grabbing; }
+  .slot.filled .empty-hint{ display:none; }
+
+      .slot .remove-btn{
+        position:absolute;
+    top:6px;
+    right:6px;
+    width:22px;
+    height:22px;
+    border-radius:50%;
+    background:rgba(20,20,24,.55);
+    color:#fff;
+        border:none;
+    font-size:13px;
+    line-height:1;
+    cursor:pointer;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:3;
+}
+  .slot.filled .remove-btn{ display:flex; }
+
+      .slot .zoom-bar{
+        position:absolute;
+    left:6px;
+    right:6px;
+    bottom:6px;
+    display:none;
+    align-items:center;
+    gap:6px;
+        background:rgba(20,20,24,.55);
+    border-radius:20px;
+    padding:4px 10px;
+    z-index:3;
+}
+  .slot.filled .zoom-bar{ display:flex; }
+  .slot .zoom-bar span{
+    color:#fff;
+    font-size:10px;
+        opacity:.85;
+    }
+        .slot .zoom-bar input[type=range]{
+    flex:1;
+        accent-color:#fff;
+    height:14px;
+}
+
+  input[type=file]{ display:none; }
+
+            .panel{
+    background:var(--card);
+    border-radius:16px;
+    padding:18px;
+    box-shadow:0 1px 3px rgba(0,0,0,.06), 0 10px 30px rgba(0,0,0,.04);
+    display:flex;
+    flex-direction:column;
+    gap:18px;
+}
+  .field-label{
+        font-size:11px;
+    font-weight:600;
+    text-transform:uppercase;
+    letter-spacing:.04em;
+    color:var(--muted);
+    margin-bottom:8px;
+    display:block;
+}
+  .layout-grid{
+        display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:8px;
+}
+  .layout-btn{
+        border:2px solid transparent;
+    background:#f0f0f3;
+        border-radius:10px;
+    padding:8px;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+}
+  .layout-btn.active{
+    border-color:var(--accent);
+    background:#f2ebff;
+    }
+
+  .mini{
+        width:34px;
+    height:34px;
+    display:grid;
+    gap:2px;
+    background:#c8c8d2;
+        padding:2px;
+    border-radius:3px;
+  }
+  .mini > div{ background:#8b8b96; border-radius:1px; }
+  .layout-btn.active .mini{ background:var(--accent); }
+  .layout-btn.active .mini > div{ background:#d9c6ff; }
+      .mini.layout-1{ grid-template-columns:1fr; grid-template-areas:"a"; }
+  .mini.layout-2v{ grid-template-columns:1fr 1fr; grid-template-areas:"a b"; }
+  .mini.layout-2h{ grid-template-columns:1fr; grid-template-rows:1fr 1fr; grid-template-areas:"a" "b"; }
+  .mini.layout-3l{ grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; grid-template-areas:"a b" "a c"; }
+  .mini.layout-3t{ grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; grid-template-areas:"a a" "b c"; }
+  .mini.layout-4{ grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; grid-template-areas:"a b" "c d"; }
+  .mini.layout-3v{ grid-template-columns:1fr 1fr 1fr; grid-template-areas:"a b c"; }
+  .mini.layout-4v{ grid-template-columns:1fr 1fr 1fr 1fr; grid-template-areas:"a b c d"; }
+  .mini.layout-5v{ grid-template-columns:1fr 1fr 1fr 1fr 1fr; grid-template-areas:"a b c d e"; }
+
+  .shape-row, .swatch-row{
+        display:flex;
+    gap:8px;
+}
+  .chip-btn{
+        flex:1;
+    border:2px solid transparent;
+    background:#f0f0f3;
+        border-radius:10px;
+    padding:8px 6px;
+    font-size:12px;
+    cursor:pointer;
+    color:var(--ink);
+}
+  .chip-btn.active{
+        border-color:var(--accent);
+    background:#f2ebff;
+        color:var(--accent);
+    font-weight:600;
+  }
+  .swatch{
+        width:28px;
+    height:28px;
+    border-radius:50%;
+    border:2px solid transparent;
+    cursor:pointer;
+    flex:none;
+  }
+  .swatch.active{ border-color:#1c1c22; }
+
+  .range-row{
+        display:flex;
+    align-items:center;
+    gap:10px;
+}
+  .range-row input[type=range]{ flex:1; }
+  .range-row output{
+        color:var(--muted);
+    width:34px;
+    text-align:right;
+}
+
+  input[type=color]{
+    -webkit-appearance:none;
+    appearance:none;
+    width:28px;
+    height:28px;
+    border:none;
+    border-radius:50%;
+    padding:0;
+    background:none;
+    cursor:pointer;
+  }
+  input[type=color]::-webkit-color-swatch-wrapper{ padding:0; }
+  input[type=color]::-webkit-color-swatch{ border:2px solid #ddd; border-radius:50%; }
+
+  .download-btn{
+        width:100%;
+    padding:12px;
+    border:none;
+    border-radius:10px;
+    background:var(--accent);
+    color:#fff;
+        font-size:14px;
+    font-weight:600;
+    cursor:pointer;
+}
+  .download-btn:hover{ background:#6d28d9; }
+  .download-btn:disabled{ background:#c7bce8; cursor:not-allowed; }
+
+  .reset-row{
+        display:flex;
+    gap:8px;
+    margin-top:-10px;
+                        }
+  .reset-btn{
+        flex:1;
+    padding:9px 4px;
+    border:1px solid #ddd;
+    border-radius:10px;
+    background:#fff;
+        color:var(--muted);
+    font-size:12px;
+    cursor:pointer;
+    transition:background .15s, color .15s;
+}
+  .reset-btn:hover{ background:#f5f5f7; color:var(--ink); }
+    .reset-btn.saved{
+    background:#ecfdf5;
+        border-color:#34d399;
+    color:#059669;
+  }
+
+  .hint-text{
+        font-size:11px;
+    color:var(--muted);
+    text-align:center;
+    margin-top:-8px;
+                  }
+</style>
+  </head>
+  <body>
+
+    <h1>Photo Collage Maker</h1>
+  <p class="subtitle">Pick a layout, add up to 5 photos, drag &amp; zoom to frame each one, then download.</p>
+
+    <div class="app">
+      <div class="stage">
+        <div class="frame-wrap">
+          <div class="frame shape-portrait layout-2v" id="frame">
+            <div class="slot" data-index="0" style="grid-area:a">
+              <div class="empty-hint"><span class="plus">+</span><span>Add photo</span></div>
+              <button class="remove-btn" data-action="remove" aria-label="Remove photo">&times;</button>
+              <div class="zoom-bar">
+                <span>Size</span>
+                <input type="range" min="100" max="300" value="100" data-action="zoom">
+              </div>
+              <input type="file" accept="image/*" data-action="file">
+            </div>
+            <div class="slot" data-index="1" style="grid-area:b">
+              <div class="empty-hint"><span class="plus">+</span><span>Add photo</span></div>
+              <button class="remove-btn" data-action="remove" aria-label="Remove photo">&times;</button>
+              <div class="zoom-bar">
+                <span>Size</span>
+                <input type="range" min="100" max="300" value="100" data-action="zoom">
+              </div>
+              <input type="file" accept="image/*" data-action="file">
+            </div>
+            <div class="slot" data-index="2" style="grid-area:c">
+              <div class="empty-hint"><span class="plus">+</span><span>Add photo</span></div>
+              <button class="remove-btn" data-action="remove" aria-label="Remove photo">&times;</button>
+              <div class="zoom-bar">
+                <span>Size</span>
+                <input type="range" min="100" max="300" value="100" data-action="zoom">
+              </div>
+              <input type="file" accept="image/*" data-action="file">
+            </div>
+            <div class="slot" data-index="3" style="grid-area:d">
+              <div class="empty-hint"><span class="plus">+</span><span>Add photo</span></div>
+              <button class="remove-btn" data-action="remove" aria-label="Remove photo">&times;</button>
+              <div class="zoom-bar">
+                <span>Size</span>
+                <input type="range" min="100" max="300" value="100" data-action="zoom">
+              </div>
+              <input type="file" accept="image/*" data-action="file">
+            </div>
+            <div class="slot" data-index="4" style="grid-area:e">
+              <div class="empty-hint"><span class="plus">+</span><span>Add photo</span></div>
+              <button class="remove-btn" data-action="remove" aria-label="Remove photo">&times;</button>
+              <div class="zoom-bar">
+                <span>Size</span>
+                <input type="range" min="100" max="300" value="100" data-action="zoom">
+              </div>
+              <input type="file" accept="image/*" data-action="file">
+            </div>
+          </div>
+        </div>
+        <p class="hint-text">Click an empty slot to add a photo. Drag a photo to reposition it, use the Size slider to zoom.</p>
+      </div>
+
+      <div class="panel">
+        <div>
+          <span class="field-label">Layout</span>
+          <div class="layout-grid">
+            <button class="layout-btn" data-layout="1" title="1 photo"><div class="mini layout-1"><div style="grid-area:a"></div></div></button>
+            <button class="layout-btn active" data-layout="2v" title="2 side by side"><div class="mini layout-2v"><div style="grid-area:a"></div><div style="grid-area:b"></div></div></button>
+            <button class="layout-btn" data-layout="3v" title="3 vertical rows"><div class="mini layout-3v"><div style="grid-area:a"></div><div style="grid-area:b"></div><div style="grid-area:c"></div></div></button>
+            <button class="layout-btn" data-layout="4v" title="4 vertical rows"><div class="mini layout-4v"><div style="grid-area:a"></div><div style="grid-area:b"></div><div style="grid-area:c"></div><div style="grid-area:d"></div></div></button>
+            <button class="layout-btn" data-layout="5v" title="5 vertical rows"><div class="mini layout-5v"><div style="grid-area:a"></div><div style="grid-area:b"></div><div style="grid-area:c"></div><div style="grid-area:d"></div><div style="grid-area:e"></div></div></button>
+            <button class="layout-btn" data-layout="2h" title="2 stacked"><div class="mini layout-2h"><div style="grid-area:a"></div><div style="grid-area:b"></div></div></button>
+            <button class="layout-btn" data-layout="3l" title="3, one large left"><div class="mini layout-3l"><div style="grid-area:a"></div><div style="grid-area:b"></div><div style="grid-area:c"></div></div></button>
+            <button class="layout-btn" data-layout="3t" title="3, one large top"><div class="mini layout-3t"><div style="grid-area:a"></div><div style="grid-area:b"></div><div style="grid-area:c"></div></div></button>
+            <button class="layout-btn" data-layout="4" title="4 photos"><div class="mini layout-4"><div style="grid-area:a"></div><div style="grid-area:b"></div><div style="grid-area:c"></div><div style="grid-area:d"></div></div></button>
+          </div>
+        </div>
+
+        <div>
+          <span class="field-label">Canvas shape</span>
+          <div class="shape-row">
+            <button class="chip-btn" data-shape="shape-square">Square</button>
+            <button class="chip-btn active" data-shape="shape-portrait">Portrait</button>
+            <button class="chip-btn" data-shape="shape-landscape">Landscape</button>
+          </div>
+        </div>
+
+        <div>
+          <span class="field-label">Border color</span>
+          <div class="swatch-row" id="swatchRow">
+            <input type="color" id="customColor" value="#a855f7" title="Custom color">
+          </div>
+        </div>
+
+        <div>
+          <span class="field-label">Border thickness</span>
+          <div class="range-row">
+            <input type="range" id="borderWidth" min="0" max="28" value="10">
+            <output id="borderWidthOut">10px</output>
+          </div>
+        </div>
+
+        <div class="reset-row">
+          <button class="reset-btn" id="setDefaultBtn" type="button">Set as default</button>
+          <button class="reset-btn" id="resetBorderBtn" type="button">Reset to default</button>
+        </div>
+
+        <button class="download-btn" id="downloadBtn">Download JPG</button>
+      </div>
+    </div>
+
+  <script>
+  (function(){
+    "use strict";
+
+  var LAYOUTS = {
+    "1":  ["a"],
+    "2v": ["a","b"],
+    "2h": ["a","b"],
+    "3v": ["a","b","c"],
+    "3l": ["a","b","c"],
+    "3t": ["a","b","c"],
+    "4v": ["a","b","c","d"],
+    "4":  ["a","b","c","d"],
+    "5v": ["a","b","c","d","e"]
+};
+  var SWATCHES = ["#a855f7","#f43f5e","#111111","#ffffff"];
+  var DEFAULT_BORDER_COLOR = "#a855f7";
+  var DEFAULT_BORDER_WIDTH = 10;
+
+  var frame = document.getElementById("frame");
+  var slotEls = Array.prototype.slice.call(document.querySelectorAll(".slot"));
+  var currentLayout = "2v";
+
+  // per-slot state, indexed 0-3
+  var slots = slotEls.map(function(el){
+    return {
+            el: el,
+            img: null,       // HTMLImageElement (natural size holder)
+            dataURL: null,
+            zoom: 1,          // 1.0 - 3.0
+            panX: 0.5,
+            panY: 0.5,
+            dragging: false
+      };
+});
+
+  function getMetrics(slot){
+        var cw = slot.el.clientWidth, ch = slot.el.clientHeight;
+    var iw = slot.img.naturalWidth, ih = slot.img.naturalHeight;
+    var cover = Math.max(cw / iw, ch / ih);
+    var total = cover * slot.zoom;
+    var bgW = iw * total, bgH = ih * total;
+    return {cw:cw, ch:ch, iw:iw, ih:ih, total:total, bgW:bgW, bgH:bgH};
+}
+
+  function renderSlot(slot){
+        if (!slot.img){
+      slot.el.classList.remove("filled");
+      slot.el.style.backgroundImage = "";
+      return;
+        }
+    slot.el.classList.add("filled");
+    var m = getMetrics(slot);
+    slot.el.style.backgroundImage = "url(" + slot.dataURL + ")";
+    slot.el.style.backgroundSize = m.bgW.toFixed(2) + "px " + m.bgH.toFixed(2) + "px";
+    slot.el.style.backgroundPosition = (slot.panX * 100) + "% " + (slot.panY * 100) + "%";
+    var zoomInput = slot.el.querySelector('[data-action="zoom"]');
+    zoomInput.value = Math.round(slot.zoom * 100);
+  }
+
+  function renderAll(){
+        slots.forEach(renderSlot);
+  }
+
+  function applyLayout(key){
+        currentLayout = key;
+    frame.className = "frame " + frame.dataset.shape ? frame.className : frame.className; // no-op guard
+    // reset layout classes but keep shape class
+    var shapeClass = Array.prototype.find.call(frame.classList, function(c){ return c.indexOf("shape-") === 0; }) || "shape-portrait";
+    frame.className = "frame " + shapeClass + " layout-" + key;
+
+    var areas = LAYOUTS[key];
+    slots.forEach(function(slot, i){
+            if (i < areas.length){
+                      slot.el.classList.remove("hidden");
+                      slot.el.style.gridArea = areas[i];
+    } else {
+        slot.el.classList.add("hidden");
+    }
+  });
+
+    document.querySelectorAll(".layout-btn").forEach(function(btn){
+            btn.classList.toggle("active", btn.dataset.layout === key);
+    });
+
+    requestAnimationFrame(renderAll);
+}
+
+  // ---- file loading ----
+  function loadFile(slot, file){
+        if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(e){
+      var img = new Image();
+      img.onload = function(){
+        slot.img = img;
+        slot.dataURL = e.target.result;
+        slot.zoom = 1;
+        slot.panX = 0.5;
+        slot.panY = 0.5;
+        renderSlot(slot);
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  slots.forEach(function(slot){
+        var fileInput = slot.el.querySelector('[data-action="file"]');
+    var removeBtn = slot.el.querySelector('[data-action="remove"]');
+    var zoomInput = slot.el.querySelector('[data-action="zoom"]');
+
+    slot.el.addEventListener("click", function(e){
+            if (slot.img) return; // filled slots use drag, not click
+      if (e.target === removeBtn || e.target === zoomInput) return;
+      fileInput.click();
+    });
+
+    fileInput.addEventListener("change", function(e){
+            loadFile(slot, e.target.files[0]);
+            fileInput.value = "";
+  });
+    fileInput.addEventListener("click", function(e){ e.stopPropagation(); });
+
+    removeBtn.addEventListener("click", function(e){
+            e.stopPropagation();
+      slot.img = null;
+      slot.dataURL = null;
+      slot.zoom = 1;
+      slot.panX = 0.5;
+      slot.panY = 0.5;
+      renderSlot(slot);
+    });
+
+    zoomInput.addEventListener("click", function(e){ e.stopPropagation(); });
+    zoomInput.addEventListener("input", function(e){
+            slot.zoom = parseInt(e.target.value, 10) / 100;
+      renderSlot(slot);
+    });
+
+    // drag to pan
+    var dragState = null;
+    slot.el.addEventListener("pointerdown", function(e){
+            if (!slot.img) return;
+      if (e.target === removeBtn || e.target === zoomInput) return;
+      var m = getMetrics(slot);
+      dragState = {
+                startX: e.clientX,
+                startY: e.clientY,
+                panX: slot.panX,
+                panY: slot.panY,
+                rangeX: Math.max(m.bgW - m.cw, 0),
+                rangeY: Math.max(m.bgH - m.ch, 0)
+        };
+      slot.el.setPointerCapture(e.pointerId);
+    });
+    slot.el.addEventListener("pointermove", function(e){
+            if (!dragState) return;
+      var dx = e.clientX - dragState.startX;
+      var dy = e.clientY - dragState.startY;
+      slot.panX = dragState.rangeX > 0
+                ? clamp(dragState.panX - dx / dragState.rangeX, 0, 1)
+                : 0.5;
+      slot.panY = dragState.rangeY > 0
+                ? clamp(dragState.panY - dy / dragState.rangeY, 0, 1)
+                : 0.5;
+      renderSlot(slot);
+    });
+    function endDrag(e){
+            dragState = null;
+    }
+    slot.el.addEventListener("pointerup", endDrag);
+    slot.el.addEventListener("pointercancel", endDrag);
+});
+
+  function clamp(v, lo, hi){ return Math.min(hi, Math.max(lo, v)); }
+
+  // ---- layout buttons ----
+  document.querySelectorAll(".layout-btn").forEach(function(btn){
+        btn.addEventListener("click", function(){
+                applyLayout(btn.dataset.layout);
+  });
+  });
+
+  // ---- canvas shape ----
+  document.querySelectorAll(".chip-btn").forEach(function(btn){
+        btn.addEventListener("click", function(){
+                document.querySelectorAll(".chip-btn").forEach(function(b){ b.classList.remove("active"); });
+      btn.classList.add("active");
+      frame.classList.remove("shape-square", "shape-portrait", "shape-landscape");
+      frame.classList.add(btn.dataset.shape);
+      requestAnimationFrame(renderAll);
+        });
+  });
+
+  // ---- border color ----
+  var swatchRow = document.getElementById("swatchRow");
+  var customColorInput = document.getElementById("customColor");
+  SWATCHES.forEach(function(color, i){
+        var sw = document.createElement("div");
+    sw.className = "swatch" + (i === 0 ? " active" : "");
+    sw.style.background = color;
+    sw.dataset.color = color;
+    sw.title = color;
+    sw.addEventListener("click", function(){
+            setBorderColor(color);
+      document.querySelectorAll(".swatch").forEach(function(s){ s.classList.remove("active"); });
+      sw.classList.add("active");
+    });
+    swatchRow.insertBefore(sw, customColorInput);
+  });
+  customColorInput.addEventListener("input", function(){
+        setBorderColor(customColorInput.value);
+    document.querySelectorAll(".swatch").forEach(function(s){ s.classList.remove("active"); });
+  });
+  function setBorderColor(color){
+        document.documentElement.style.setProperty("--border-color", color);
+  }
+
+  // ---- border width ----
+  var borderWidthInput = document.getElementById("borderWidth");
+  var borderWidthOut = document.getElementById("borderWidthOut");
+  borderWidthInput.addEventListener("input", function(){
+        var v = borderWidthInput.value;
+    document.documentElement.style.setProperty("--border-width", v + "px");
+    borderWidthOut.textContent = v + "px";
+    requestAnimationFrame(renderAll);
+  });
+
+  window.addEventListener("resize", function(){
+        requestAnimationFrame(renderAll);
+  });
+
+  // ---- set current border as default / reset to default ----
+  var setDefaultBtn = document.getElementById("setDefaultBtn");
+  var resetBorderBtn = document.getElementById("resetBorderBtn");
+
+  function flashSaved(btn, label){
+        var original = btn.textContent;
+    btn.textContent = label;
+    btn.classList.add("saved");
+    setTimeout(function(){
+      btn.textContent = original;
+      btn.classList.remove("saved");
+    }, 1100);
+  }
+
+  setDefaultBtn.addEventListener("click", function(){
+        var currentColor = getComputedStyle(document.documentElement).getPropertyValue("--border-color").trim();
+    var currentWidth = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--border-width"), 10);
+    DEFAULT_BORDER_COLOR = currentColor || DEFAULT_BORDER_COLOR;
+    DEFAULT_BORDER_WIDTH = isNaN(currentWidth) ? DEFAULT_BORDER_WIDTH : currentWidth;
+    flashSaved(setDefaultBtn, "Saved as default");
+  });
+
+  resetBorderBtn.addEventListener("click", function(){
+        setBorderColor(DEFAULT_BORDER_COLOR);
+    customColorInput.value = DEFAULT_BORDER_COLOR;
+    document.querySelectorAll(".swatch").forEach(function(s){
+            s.classList.toggle("active", s.dataset.color === DEFAULT_BORDER_COLOR);
+    });
+    borderWidthInput.value = DEFAULT_BORDER_WIDTH;
+    document.documentElement.style.setProperty("--border-width", DEFAULT_BORDER_WIDTH + "px");
+    borderWidthOut.textContent = DEFAULT_BORDER_WIDTH + "px";
+    requestAnimationFrame(renderAll);
+  });
+
+  // ---- export ----
+  document.getElementById("downloadBtn").addEventListener("click", function(){
+        var hasAny = slots.some(function(s){ return s.img; });
+    if (!hasAny){
+      alert("Add at least one photo before downloading.");
+      return;
+    }
+    var exportEl = exportCollage();
+    var link = document.createElement("a");
+    link.download = "collage.jpg";
+    link.href = exportEl.toDataURL("image/jpeg", 0.85);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  });
+
+  function exportCollage(){
+        var EXPORT_W = 1280; // sized for on-screen viewing/sharing, not print
+    var frameRect = frame.getBoundingClientRect();
+    var EXPORT_H = Math.round(EXPORT_W * (frameRect.height / frameRect.width));
+    var scaleFactor = EXPORT_W / frameRect.width;
+
+    var canvas = document.createElement("canvas");
+    canvas.width = EXPORT_W;
+    canvas.height = EXPORT_H;
+    var ctx = canvas.getContext("2d");
+
+    // border/background color
+    var borderColor = getComputedStyle(document.documentElement).getPropertyValue("--border-color").trim();
+    ctx.fillStyle = borderColor || "#a855f7";
+    ctx.fillRect(0, 0, EXPORT_W, EXPORT_H);
+
+    slots.forEach(function(slot){
+            if (slot.el.classList.contains("hidden") || !slot.img) return;
+      var r = slot.el.getBoundingClientRect();
+      var dx = (r.left - frameRect.left) * scaleFactor;
+      var dy = (r.top - frameRect.top) * scaleFactor;
+      var dw = r.width * scaleFactor;
+      var dh = r.height * scaleFactor;
+
+      var iw = slot.img.naturalWidth, ih = slot.img.naturalHeight;
+      var cover = Math.max(dw / iw, dh / ih);
+      var total = cover * slot.zoom;
+      var bgW = iw * total, bgH = ih * total;
+      var posXpx = (dw - bgW) * slot.panX;
+      var posYpx = (dh - bgH) * slot.panY;
+      var sx = -posXpx / total;
+      var sy = -posYpx / total;
+      var sw = dw / total;
+      var sh = dh / total;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(dx, dy, dw, dh);
+      ctx.clip();
+      ctx.drawImage(slot.img, sx, sy, sw, sh, dx, dy, dw, dh);
+      ctx.restore();
+    });
+
+    return canvas;
+  }
+
+  // expose for automated testing
+  window.__collage = {
+        applyLayout: applyLayout,
+        exportCollage: exportCollage,
+        slots: slots
+    };
+
+  applyLayout(currentLayout);
+})();
+</script>
+  </body>
+  </html>
+  
