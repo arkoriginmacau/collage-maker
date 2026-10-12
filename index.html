@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="app-version" content="1.1.0">
 <title>Photo Collage Maker</title>
 <style>
   :root{
@@ -57,15 +58,24 @@
     display:flex;
     justify-content:center;
   }
+  .frame-shell{
+    position:relative;
+    width:100%;
+    max-width:420px;
+    min-width:0;
+  }
   .frame{
     background:var(--border-color);
     padding:var(--border-width);
     display:grid;
     gap:var(--border-width);
     width:100%;
-    max-width:420px;
     border-radius:4px;
     overflow:hidden;
+    touch-action:none;
+    -webkit-user-select:none;
+    user-select:none;
+    -webkit-touch-callout:none;
   }
   .frame.shape-square{ aspect-ratio:1/1; }
   .frame.shape-portrait{ aspect-ratio:3/4; }
@@ -90,6 +100,9 @@
     min-width:0;
     cursor:pointer;
     touch-action:none;
+    -webkit-user-select:none;
+    user-select:none;
+    -webkit-touch-callout:none;
   }
   .slot.hidden{ display:none; }
   .slot .empty-hint{
@@ -129,7 +142,7 @@
     display:none;
     align-items:center;
     justify-content:center;
-    z-index:3;
+    z-index:6;
   }
   .slot.filled .remove-btn{ display:flex; }
 
@@ -144,7 +157,8 @@
     background:rgba(20,20,24,.55);
     border-radius:20px;
     padding:4px 10px;
-    z-index:3;
+    z-index:6;
+    touch-action:auto;
   }
   .slot.filled .zoom-bar{ display:flex; }
   .slot .zoom-bar span{
@@ -156,7 +170,50 @@
     flex:1;
     accent-color:#fff;
     height:14px;
+    touch-action:auto;
+    min-width:0;
   }
+
+  .handles{
+    position:absolute;
+    inset:0;
+    z-index:4;
+    pointer-events:none;
+  }
+  .seam{
+    position:absolute;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    touch-action:none;
+    pointer-events:auto;
+    background:transparent;
+    border:0;
+    padding:0;
+    margin:0;
+  }
+  .seam-v{ cursor:col-resize; }
+  .seam-h{ cursor:row-resize; }
+  .seam .grip{
+    border-radius:99px;
+    background:#fff;
+    box-shadow:0 0 0 1px rgba(0,0,0,.45), 0 1px 3px rgba(0,0,0,.35);
+    pointer-events:none;
+    flex:none;
+  }
+  .seam-v .grip{ width:4px; height:22px; }
+  .seam-h .grip{ height:4px; width:22px; }
+  .seam.is-active .grip,
+  .seam:hover .grip{
+    box-shadow:0 0 0 1px rgba(0,0,0,.55), 0 1px 6px rgba(0,0,0,.4);
+  }
+  .seam:focus{ outline:none; }
+  .seam:focus-visible .grip{
+    box-shadow:0 0 0 2px #fff, 0 0 0 4px var(--accent);
+  }
+  body.resizing-v, body.resizing-v *{ cursor:col-resize !important; }
+  body.resizing-h, body.resizing-h *{ cursor:row-resize !important; }
+  body.resizing-v, body.resizing-h{ user-select:none; }
 
   input[type=file]{ display:none; }
 
@@ -297,12 +354,23 @@
     transition:background .15s, color .15s;
   }
   .reset-btn:hover{ background:#f5f5f7; color:var(--ink); }
+  .reset-btn:disabled{ opacity:.45; cursor:not-allowed; }
 
   .hint-text{
     font-size:11px;
     color:var(--muted);
     text-align:center;
     margin:10px 0 0;
+  }
+  .site-footer{
+    max-width:920px;
+    margin:18px auto 0;
+    text-align:center;
+    color:var(--muted);
+    font-size:11px;
+  }
+  .site-footer [data-version-slot]{
+    margin-left:6px;
   }
 
   input[type=color]{
@@ -323,60 +391,63 @@
 <body>
 
   <h1>Photo Collage Maker</h1>
-  <p class="subtitle">Pick a layout, add up to 5 photos, drag &amp; zoom to frame each one, then download.</p>
+  <p class="subtitle">Pick a layout, add up to 5 photos, drag borders and photos to frame each one, then download.</p>
 
   <div class="app">
     <div class="stage">
       <div class="frame-wrap">
-        <div class="frame shape-portrait layout-2v" id="frame">
-          <div class="slot" data-index="0" style="grid-area:a">
-            <div class="empty-hint"><span class="plus">+</span><span>Add photo</span></div>
-            <button class="remove-btn" data-action="remove" aria-label="Remove photo">&times;</button>
-            <div class="zoom-bar">
-              <span>Size</span>
-              <input type="range" min="100" max="300" value="100" data-action="zoom">
+        <div class="frame-shell" id="frameShell">
+          <div class="frame shape-portrait layout-2v" id="frame">
+            <div class="slot" data-index="0" style="grid-area:a">
+              <div class="empty-hint"><span class="plus">+</span><span>Add photo</span></div>
+              <button class="remove-btn" data-action="remove" aria-label="Remove photo">&times;</button>
+              <div class="zoom-bar">
+                <span>Size</span>
+                <input type="range" min="100" max="300" value="100" data-action="zoom" aria-label="Photo size">
+              </div>
+              <input type="file" accept="image/*" data-action="file">
             </div>
-            <input type="file" accept="image/*" data-action="file">
-          </div>
-          <div class="slot" data-index="1" style="grid-area:b">
-            <div class="empty-hint"><span class="plus">+</span><span>Add photo</span></div>
-            <button class="remove-btn" data-action="remove" aria-label="Remove photo">&times;</button>
-            <div class="zoom-bar">
-              <span>Size</span>
-              <input type="range" min="100" max="300" value="100" data-action="zoom">
+            <div class="slot" data-index="1" style="grid-area:b">
+              <div class="empty-hint"><span class="plus">+</span><span>Add photo</span></div>
+              <button class="remove-btn" data-action="remove" aria-label="Remove photo">&times;</button>
+              <div class="zoom-bar">
+                <span>Size</span>
+                <input type="range" min="100" max="300" value="100" data-action="zoom" aria-label="Photo size">
+              </div>
+              <input type="file" accept="image/*" data-action="file">
             </div>
-            <input type="file" accept="image/*" data-action="file">
-          </div>
-          <div class="slot" data-index="2" style="grid-area:c">
-            <div class="empty-hint"><span class="plus">+</span><span>Add photo</span></div>
-            <button class="remove-btn" data-action="remove" aria-label="Remove photo">&times;</button>
-            <div class="zoom-bar">
-              <span>Size</span>
-              <input type="range" min="100" max="300" value="100" data-action="zoom">
+            <div class="slot" data-index="2" style="grid-area:c">
+              <div class="empty-hint"><span class="plus">+</span><span>Add photo</span></div>
+              <button class="remove-btn" data-action="remove" aria-label="Remove photo">&times;</button>
+              <div class="zoom-bar">
+                <span>Size</span>
+                <input type="range" min="100" max="300" value="100" data-action="zoom" aria-label="Photo size">
+              </div>
+              <input type="file" accept="image/*" data-action="file">
             </div>
-            <input type="file" accept="image/*" data-action="file">
-          </div>
-          <div class="slot" data-index="3" style="grid-area:d">
-            <div class="empty-hint"><span class="plus">+</span><span>Add photo</span></div>
-            <button class="remove-btn" data-action="remove" aria-label="Remove photo">&times;</button>
-            <div class="zoom-bar">
-              <span>Size</span>
-              <input type="range" min="100" max="300" value="100" data-action="zoom">
+            <div class="slot" data-index="3" style="grid-area:d">
+              <div class="empty-hint"><span class="plus">+</span><span>Add photo</span></div>
+              <button class="remove-btn" data-action="remove" aria-label="Remove photo">&times;</button>
+              <div class="zoom-bar">
+                <span>Size</span>
+                <input type="range" min="100" max="300" value="100" data-action="zoom" aria-label="Photo size">
+              </div>
+              <input type="file" accept="image/*" data-action="file">
             </div>
-            <input type="file" accept="image/*" data-action="file">
-          </div>
-          <div class="slot" data-index="4" style="grid-area:e">
-            <div class="empty-hint"><span class="plus">+</span><span>Add photo</span></div>
-            <button class="remove-btn" data-action="remove" aria-label="Remove photo">&times;</button>
-            <div class="zoom-bar">
-              <span>Size</span>
-              <input type="range" min="100" max="300" value="100" data-action="zoom">
+            <div class="slot" data-index="4" style="grid-area:e">
+              <div class="empty-hint"><span class="plus">+</span><span>Add photo</span></div>
+              <button class="remove-btn" data-action="remove" aria-label="Remove photo">&times;</button>
+              <div class="zoom-bar">
+                <span>Size</span>
+                <input type="range" min="100" max="300" value="100" data-action="zoom" aria-label="Photo size">
+              </div>
+              <input type="file" accept="image/*" data-action="file">
             </div>
-            <input type="file" accept="image/*" data-action="file">
           </div>
+          <div class="handles" id="handles"></div>
         </div>
       </div>
-      <p class="hint-text">Click an empty slot to add a photo. Drag a photo to reposition it, use the Size slider to zoom.</p>
+      <p class="hint-text">Drag the handles between cells to resize them. Drag a photo to move it. Zoom with Size, the scroll wheel, or pinch.</p>
     </div>
 
     <div class="panel">
@@ -425,138 +496,696 @@
 
       <div class="reset-row">
         <button class="reset-btn" id="resetBorderBtn" type="button">Reset to default</button>
+        <button class="reset-btn" id="resetCellsBtn" type="button">Reset sizes</button>
       </div>
 
       <button class="download-btn" id="downloadBtn">Download JPG</button>
     </div>
   </div>
 
+  <footer class="site-footer">Photo Collage Maker <span data-version-slot>v1.1.0</span></footer>
+
 <script>
 (function(){
   "use strict";
 
   var LAYOUTS = {
-    "1":  ["a"],
-    "2v": ["a","b"],
-    "2h": ["a","b"],
-    "3v": ["a","b","c"],
-    "3l": ["a","b","c"],
-    "3t": ["a","b","c"],
-    "4v": ["a","b","c","d"],
-    "4":  ["a","b","c","d"],
-    "5v": ["a","b","c","d","e"]
+    "1":  { areas: [["a"]] },
+    "2v": { areas: [["a", "b"]] },
+    "2h": { areas: [["a"], ["b"]] },
+    "3v": { areas: [["a", "b", "c"]] },
+    "4v": { areas: [["a", "b", "c", "d"]] },
+    "5v": { areas: [["a", "b", "c", "d", "e"]] },
+    "3l": { areas: [["a", "b"], ["a", "c"]] },
+    "3t": { areas: [["a", "a"], ["b", "c"]] },
+    "4":  { areas: [["a", "b"], ["c", "d"]] }
   };
-  var SWATCHES = ["#c21d2e","#f43f5e","#111111","#ffffff"];
+  var AREA_INDEX = { a: 0, b: 1, c: 2, d: 3, e: 4 };
+  var SWATCHES = ["#c21d2e", "#f43f5e", "#111111", "#ffffff"];
   var DEFAULT_BORDER_COLOR = "#c21d2e";
   var DEFAULT_BORDER_WIDTH = 3;
+  var MIN_CELL_PX = 48;
+  var MIN_ZOOM = 1;
+  var MAX_ZOOM = 3;
 
-  // Drop any defaults saved by the removed "Set as default" control.
   try {
     localStorage.removeItem("collageDefaultBorderColor");
     localStorage.removeItem("collageDefaultBorderWidth");
-  } catch(e) {}
+  } catch (e) {}
 
   var frame = document.getElementById("frame");
+  var handlesEl = document.getElementById("handles");
   var slotEls = Array.prototype.slice.call(document.querySelectorAll(".slot"));
   var currentLayout = "2v";
+  var splitState = {};
+  var activeSeamDrag = null;
+  var resetCellsBtn = document.getElementById("resetCellsBtn");
 
-  // per-slot state, indexed 0-3
   var slots = slotEls.map(function(el){
     return {
       el: el,
-      img: null,       // HTMLImageElement (natural size holder)
+      img: null,
       dataURL: null,
-      zoom: 1,          // 1.0 - 3.0
+      zoom: 1,
       panX: 0.5,
       panY: 0.5,
-      dragging: false
+      pointers: {},
+      gesture: null
     };
   });
 
-  function getMetrics(slot){
-    var cw = slot.el.clientWidth, ch = slot.el.clientHeight;
-    var iw = slot.img.naturalWidth, ih = slot.img.naturalHeight;
+  function clamp(v, lo, hi){ return Math.min(hi, Math.max(lo, v)); }
+
+  function specOf(key){
+    var areas = LAYOUTS[key].areas;
+    return { areas: areas, rows: areas.length, cols: areas[0].length };
+  }
+
+  function equalWeights(n){
+    var arr = [];
+    for (var i = 0; i < n; i++) arr.push(1);
+    return arr;
+  }
+
+  function getSplits(key){
+    var spec = specOf(key);
+    var existing = splitState[key];
+    if (!existing || existing.cols.length !== spec.cols || existing.rows.length !== spec.rows) {
+      splitState[key] = { cols: equalWeights(spec.cols), rows: equalWeights(spec.rows) };
+    }
+    return splitState[key];
+  }
+
+  function placement(cw, ch, iw, ih, zoom, panX, panY){
     var cover = Math.max(cw / iw, ch / ih);
-    var total = cover * slot.zoom;
-    var bgW = iw * total, bgH = ih * total;
-    return {cw:cw, ch:ch, iw:iw, ih:ih, total:total, bgW:bgW, bgH:bgH};
+    var total = cover * zoom;
+    var bgW = iw * total;
+    var bgH = ih * total;
+    return {
+      cw: cw,
+      ch: ch,
+      iw: iw,
+      ih: ih,
+      cover: cover,
+      total: total,
+      bgW: bgW,
+      bgH: bgH,
+      ox: (cw - bgW) * panX,
+      oy: (ch - bgH) * panY
+    };
+  }
+
+  function placementFor(slot){
+    return placement(
+      slot.el.clientWidth,
+      slot.el.clientHeight,
+      slot.img.naturalWidth,
+      slot.img.naturalHeight,
+      slot.zoom,
+      slot.panX,
+      slot.panY
+    );
   }
 
   function renderSlot(slot){
-    if (!slot.img){
+    var zoomInput = slot.el.querySelector('[data-action="zoom"]');
+    if (!slot.img || !slot.img.naturalWidth || !slot.img.naturalHeight){
       slot.el.classList.remove("filled");
       slot.el.style.backgroundImage = "";
+      slot.el.style.backgroundSize = "";
+      slot.el.style.backgroundPosition = "";
+      if (zoomInput) zoomInput.value = "100";
       return;
     }
+    slot.zoom = clamp(slot.zoom, MIN_ZOOM, MAX_ZOOM);
+    slot.panX = clamp(slot.panX, 0, 1);
+    slot.panY = clamp(slot.panY, 0, 1);
     slot.el.classList.add("filled");
-    var m = getMetrics(slot);
-    slot.el.style.backgroundImage = "url(" + slot.dataURL + ")";
+    var m = placementFor(slot);
+    slot.el.style.backgroundImage = "url(\"" + slot.dataURL + "\")";
     slot.el.style.backgroundSize = m.bgW.toFixed(2) + "px " + m.bgH.toFixed(2) + "px";
-    slot.el.style.backgroundPosition = (slot.panX * 100) + "% " + (slot.panY * 100) + "%";
-    var zoomInput = slot.el.querySelector('[data-action="zoom"]');
-    zoomInput.value = Math.round(slot.zoom * 100);
+    slot.el.style.backgroundPosition = m.ox.toFixed(2) + "px " + m.oy.toFixed(2) + "px";
+    if (zoomInput) zoomInput.value = String(Math.round(slot.zoom * 100));
   }
 
   function renderAll(){
     slots.forEach(renderSlot);
   }
 
+  function setZoomAround(slot, oldZoom, oldPanX, oldPanY, newZoom, focalX, focalY, destX, destY){
+    if (!slot.img) return;
+    if (destX === undefined) destX = focalX;
+    if (destY === undefined) destY = focalY;
+    var cw = slot.el.clientWidth;
+    var ch = slot.el.clientHeight;
+    var iw = slot.img.naturalWidth;
+    var ih = slot.img.naturalHeight;
+    if (cw < 1 || ch < 1 || !iw || !ih) return;
+    var cover = Math.max(cw / iw, ch / ih);
+    newZoom = clamp(newZoom, MIN_ZOOM, MAX_ZOOM);
+    var oldTotal = cover * oldZoom;
+    if (oldTotal <= 0) return;
+    var oldBgW = iw * oldTotal;
+    var oldBgH = ih * oldTotal;
+    var oldOx = (cw - oldBgW) * oldPanX;
+    var oldOy = (ch - oldBgH) * oldPanY;
+    var ix = (focalX - oldOx) / oldTotal;
+    var iy = (focalY - oldOy) / oldTotal;
+    slot.zoom = newZoom;
+    var newTotal = cover * newZoom;
+    var newBgW = iw * newTotal;
+    var newBgH = ih * newTotal;
+    var newOx = destX - ix * newTotal;
+    var newOy = destY - iy * newTotal;
+    var denomX = cw - newBgW;
+    var denomY = ch - newBgH;
+    slot.panX = denomX < -0.5 ? clamp(newOx / denomX, 0, 1) : 0.5;
+    slot.panY = denomY < -0.5 ? clamp(newOy / denomY, 0, 1) : 0.5;
+    renderSlot(slot);
+  }
+
+  function applyGridTracks(){
+    var spec = specOf(currentLayout);
+    var splits = getSplits(currentLayout);
+    frame.style.gridTemplateColumns = splits.cols.map(function(w){ return w + "fr"; }).join(" ");
+    frame.style.gridTemplateRows = splits.rows.map(function(w){ return w + "fr"; }).join(" ");
+    frame.style.gridTemplateAreas = spec.areas.map(function(row){
+      return "\"" + row.join(" ") + "\"";
+    }).join(" ");
+  }
+
+  function visibleAreaNames(spec){
+    var seen = {};
+    var list = [];
+    for (var r = 0; r < spec.rows; r++){
+      for (var c = 0; c < spec.cols; c++){
+        var name = spec.areas[r][c];
+        if (!seen[name]){
+          seen[name] = true;
+          list.push(name);
+        }
+      }
+    }
+    return list;
+  }
+
+  function pushSegments(seams, axis, index, flags){
+    var start = null;
+    for (var i = 0; i <= flags.length; i++){
+      var on = i < flags.length && flags[i];
+      if (on && start === null) start = i;
+      if (!on && start !== null){
+        seams.push({ axis: axis, index: index, start: start, end: i });
+        start = null;
+      }
+    }
+  }
+
+  function computeSeams(spec){
+    var seams = [];
+    var r, c;
+    for (c = 0; c < spec.cols - 1; c++){
+      var vflags = [];
+      for (r = 0; r < spec.rows; r++){
+        vflags.push(spec.areas[r][c] !== spec.areas[r][c + 1]);
+      }
+      pushSegments(seams, "v", c, vflags);
+    }
+    for (r = 0; r < spec.rows - 1; r++){
+      var hflags = [];
+      for (c = 0; c < spec.cols; c++){
+        hflags.push(spec.areas[r][c] !== spec.areas[r + 1][c]);
+      }
+      pushSegments(seams, "h", r, hflags);
+    }
+    return seams;
+  }
+
+  function pointerHit(){
+    try {
+      if (window.matchMedia("(pointer: coarse)").matches) return 36;
+    } catch (e) {}
+    return 24;
+  }
+
+  function trackGeometry(weights, inner, gap){
+    var n = weights.length;
+    var free = Math.max(0, inner - gap * Math.max(0, n - 1));
+    var sum = 0;
+    for (var i = 0; i < n; i++) sum += weights[i];
+    if (sum <= 0) sum = 1;
+    var pos = [];
+    var sizes = [];
+    var cursor = 0;
+    for (var j = 0; j < n; j++){
+      var size = free * (weights[j] / sum);
+      pos.push(cursor);
+      sizes.push(size);
+      cursor += size + (j < n - 1 ? gap : 0);
+    }
+    return { pos: pos, sizes: sizes, gap: gap, free: free };
+  }
+
+  function measureTracks(){
+    var style = getComputedStyle(frame);
+    var padL = parseFloat(style.paddingLeft) || 0;
+    var padT = parseFloat(style.paddingTop) || 0;
+    var padR = parseFloat(style.paddingRight) || 0;
+    var padB = parseFloat(style.paddingBottom) || 0;
+    var gapX = parseFloat(style.columnGap);
+    var gapY = parseFloat(style.rowGap);
+    if (!isFinite(gapX)) gapX = padL;
+    if (!isFinite(gapY)) gapY = padT;
+    var splits = getSplits(currentLayout);
+    return {
+      cols: trackGeometry(splits.cols, Math.max(0, frame.clientWidth - padL - padR), gapX),
+      rows: trackGeometry(splits.rows, Math.max(0, frame.clientHeight - padT - padB), gapY)
+    };
+  }
+
+  function minCellPx(free, count){
+    if (count <= 1 || free <= 0) return 0;
+    var cap = (free / count) * 0.62;
+    if (cap < 20) return Math.max(8, cap);
+    return Math.min(MIN_CELL_PX, cap);
+  }
+
+  function areaSlot(name){
+    return slots[AREA_INDEX[name]];
+  }
+
+  function placeSeam(el, seam){
+    var spec = specOf(currentLayout);
+    var origin = handlesEl.getBoundingClientRect();
+    var HIT = pointerHit();
+    var grip = el.querySelector(".grip");
+    var top = Infinity;
+    var bottom = -Infinity;
+    var left = Infinity;
+    var right = -Infinity;
+    var gapStart = 0;
+    var gapSize = 0;
+    var sizeBefore = 0;
+    var sizeAfter = 0;
+
+    if (seam.axis === "v"){
+      for (var r = seam.start; r < seam.end; r++){
+        var a = areaSlot(spec.areas[r][seam.index]).el.getBoundingClientRect();
+        var b = areaSlot(spec.areas[r][seam.index + 1]).el.getBoundingClientRect();
+        top = Math.min(top, a.top, b.top);
+        bottom = Math.max(bottom, a.bottom, b.bottom);
+        if (r === seam.start){
+          gapStart = a.right;
+          gapSize = Math.max(0, b.left - a.right);
+          sizeBefore = a.width;
+          sizeAfter = b.width;
+        }
+      }
+      var slopBudget = Math.max(0, (HIT - gapSize) / 2);
+      var slop = Math.min(slopBudget, sizeBefore * 0.4, sizeAfter * 0.4);
+      var hit = gapSize + slop * 2;
+      var along = Math.max(0, bottom - top);
+      var lead = clamp(gapStart - origin.left - slop, 0, Math.max(0, origin.width - hit));
+      var cross = clamp(top - origin.top, 0, Math.max(0, origin.height - along));
+      el.style.left = lead + "px";
+      el.style.top = cross + "px";
+      el.style.width = hit + "px";
+      el.style.height = along + "px";
+      if (grip){
+        grip.style.width = "4px";
+        grip.style.height = Math.max(10, Math.min(22, along * 0.38)) + "px";
+      }
+    } else {
+      for (var c = seam.start; c < seam.end; c++){
+        var above = areaSlot(spec.areas[seam.index][c]).el.getBoundingClientRect();
+        var below = areaSlot(spec.areas[seam.index + 1][c]).el.getBoundingClientRect();
+        left = Math.min(left, above.left, below.left);
+        right = Math.max(right, above.right, below.right);
+        if (c === seam.start){
+          gapStart = above.bottom;
+          gapSize = Math.max(0, below.top - above.bottom);
+          sizeBefore = above.height;
+          sizeAfter = below.height;
+        }
+      }
+      var budget = Math.max(0, HIT - gapSize);
+      var up = Math.min(6, budget * 0.25, sizeBefore * 0.15);
+      var down = Math.min(Math.max(0, budget - up), sizeAfter * 0.35);
+      var hitH = gapSize + up + down;
+      var alongW = Math.max(0, right - left);
+      var leadX = clamp(left - origin.left, 0, Math.max(0, origin.width - alongW));
+      var leadY = clamp(gapStart - origin.top - up, 0, Math.max(0, origin.height - hitH));
+      el.style.left = leadX + "px";
+      el.style.top = leadY + "px";
+      el.style.width = alongW + "px";
+      el.style.height = hitH + "px";
+      if (grip){
+        grip.style.height = "4px";
+        grip.style.width = Math.max(10, Math.min(22, alongW * 0.38)) + "px";
+      }
+    }
+    updateSeamA11y(el, seam);
+  }
+
+  function updateSeamA11y(el, seam){
+    var splits = getSplits(currentLayout);
+    var weights = seam.axis === "v" ? splits.cols : splits.rows;
+    var a = weights[seam.index];
+    var b = weights[seam.index + 1];
+    var pct = Math.round((100 * a) / (a + b));
+    el.setAttribute("aria-valuenow", String(pct));
+    el.setAttribute("aria-valuemin", "8");
+    el.setAttribute("aria-valuemax", "92");
+    el.setAttribute("aria-valuetext", pct + " percent and " + (100 - pct) + " percent");
+  }
+
+  function positionHandles(){
+    var seams = handlesEl.querySelectorAll(".seam");
+    Array.prototype.forEach.call(seams, function(el){
+      if (el._seam) placeSeam(el, el._seam);
+    });
+  }
+
+  function pairPixels(seam){
+    var spec = specOf(currentLayout);
+    if (seam.axis === "v"){
+      var left = areaSlot(spec.areas[seam.start][seam.index]).el.getBoundingClientRect();
+      var right = areaSlot(spec.areas[seam.start][seam.index + 1]).el.getBoundingClientRect();
+      return { startPx: left.width, nextPx: right.width };
+    }
+    var above = areaSlot(spec.areas[seam.index][seam.start]).el.getBoundingClientRect();
+    var below = areaSlot(spec.areas[seam.index + 1][seam.start]).el.getBoundingClientRect();
+    return { startPx: above.height, nextPx: below.height };
+  }
+
+  function beginSeam(seam){
+    var tracks = seam.axis === "v" ? measureTracks().cols : measureTracks().rows;
+    var weights = seam.axis === "v" ? getSplits(currentLayout).cols : getSplits(currentLayout).rows;
+    var pair = pairPixels(seam);
+    var pairPx = pair.startPx + pair.nextPx;
+    var minPx = minCellPx(tracks.free, weights.length);
+    if (minPx * 2 > pairPx) minPx = pairPx / 2;
+    return {
+      seam: seam,
+      startPx: pair.startPx,
+      pairPx: pairPx,
+      sumW: weights[seam.index] + weights[seam.index + 1],
+      minPx: minPx,
+      weights: weights,
+      index: seam.index
+    };
+  }
+
+  function updateSeam(snap, deltaPx){
+    if (snap.pairPx <= 1) return;
+    var newPx = clamp(snap.startPx + deltaPx, snap.minPx, snap.pairPx - snap.minPx);
+    var w0 = snap.sumW * (newPx / snap.pairPx);
+    snap.weights[snap.index] = w0;
+    snap.weights[snap.index + 1] = snap.sumW - w0;
+    applyGridTracks();
+    positionHandles();
+    renderAll();
+  }
+
+  function onSeamPointerDown(e){
+    if (activeSeamDrag) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    var el = e.currentTarget;
+    var seam = el._seam;
+    var snap = beginSeam(seam);
+    var pointerId = e.pointerId;
+    var startCoord = seam.axis === "v" ? e.clientX : e.clientY;
+    activeSeamDrag = pointerId;
+    el.classList.add("is-active");
+    document.body.classList.add(seam.axis === "v" ? "resizing-v" : "resizing-h");
+    try { el.setPointerCapture(pointerId); } catch (err) {}
+
+    function onMove(ev){
+      if (ev.pointerId !== pointerId) return;
+      var coord = seam.axis === "v" ? ev.clientX : ev.clientY;
+      updateSeam(snap, coord - startCoord);
+    }
+    function onUp(ev){
+      if (ev.pointerId !== pointerId) return;
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointercancel", onUp);
+      el.classList.remove("is-active");
+      document.body.classList.remove("resizing-v", "resizing-h");
+      activeSeamDrag = null;
+      positionHandles();
+    }
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
+  }
+
+  function onSeamDoubleClick(e){
+    e.preventDefault();
+    e.stopPropagation();
+    var seam = e.currentTarget._seam;
+    var weights = seam.axis === "v" ? getSplits(currentLayout).cols : getSplits(currentLayout).rows;
+    var sum = weights[seam.index] + weights[seam.index + 1];
+    weights[seam.index] = sum / 2;
+    weights[seam.index + 1] = sum / 2;
+    applyGridTracks();
+    positionHandles();
+    renderAll();
+  }
+
+  function onSeamKeydown(e){
+    var seam = e.currentTarget._seam;
+    var step = e.shiftKey ? 32 : 12;
+    var delta = 0;
+    if (seam.axis === "v"){
+      if (e.key === "ArrowLeft") delta = -step;
+      else if (e.key === "ArrowRight") delta = step;
+    } else if (e.key === "ArrowUp") delta = -step;
+    else if (e.key === "ArrowDown") delta = step;
+    if (!delta) return;
+    e.preventDefault();
+    updateSeam(beginSeam(seam), delta);
+  }
+
+  function rebuildHandles(){
+    var seams = computeSeams(specOf(currentLayout));
+    handlesEl.innerHTML = "";
+    seams.forEach(function(seam){
+      var el = document.createElement("div");
+      el.className = "seam seam-" + seam.axis;
+      el._seam = seam;
+      el.tabIndex = 0;
+      el.setAttribute("role", "separator");
+      el.setAttribute("aria-orientation", seam.axis === "v" ? "vertical" : "horizontal");
+      el.setAttribute("aria-label", seam.axis === "v" ? "Resize adjacent columns" : "Resize adjacent rows");
+      el.title = "Drag to resize";
+      var grip = document.createElement("span");
+      grip.className = "grip";
+      grip.setAttribute("aria-hidden", "true");
+      el.appendChild(grip);
+      el.addEventListener("pointerdown", onSeamPointerDown);
+      el.addEventListener("click", function(ev){ ev.stopPropagation(); ev.preventDefault(); });
+      el.addEventListener("dblclick", onSeamDoubleClick);
+      el.addEventListener("keydown", onSeamKeydown);
+      el.addEventListener("contextmenu", function(ev){ ev.preventDefault(); });
+      handlesEl.appendChild(el);
+    });
+    positionHandles();
+    resetCellsBtn.disabled = seams.length === 0;
+  }
+
+  function resetCells(){
+    var spec = specOf(currentLayout);
+    splitState[currentLayout] = { cols: equalWeights(spec.cols), rows: equalWeights(spec.rows) };
+    applyGridTracks();
+    positionHandles();
+    renderAll();
+  }
+
   function applyLayout(key){
     currentLayout = key;
-    frame.className = "frame " + frame.dataset.shape ? frame.className : frame.className; // no-op guard
-    // reset layout classes but keep shape class
     var shapeClass = Array.prototype.find.call(frame.classList, function(c){ return c.indexOf("shape-") === 0; }) || "shape-portrait";
     frame.className = "frame " + shapeClass + " layout-" + key;
-
-    var areas = LAYOUTS[key];
+    var spec = specOf(key);
+    var names = visibleAreaNames(spec);
+    var visible = {};
+    names.forEach(function(name){ visible[name] = true; });
     slots.forEach(function(slot, i){
-      if (i < areas.length){
+      var name = null;
+      Object.keys(AREA_INDEX).forEach(function(letter){
+        if (AREA_INDEX[letter] === i) name = letter;
+      });
+      if (name && visible[name]){
         slot.el.classList.remove("hidden");
-        slot.el.style.gridArea = areas[i];
+        slot.el.style.gridArea = name;
       } else {
         slot.el.classList.add("hidden");
       }
     });
-
     document.querySelectorAll(".layout-btn").forEach(function(btn){
       btn.classList.toggle("active", btn.dataset.layout === key);
     });
-
-    requestAnimationFrame(renderAll);
+    applyGridTracks();
+    rebuildHandles();
+    renderAll();
   }
 
-  // ---- file loading ----
-  function loadFile(slot, file){
-    if (!file) return;
-    var reader = new FileReader();
-    reader.onload = function(e){
+  function loadDataURL(slot, dataURL){
+    return new Promise(function(resolve, reject){
       var img = new Image();
       img.onload = function(){
         slot.img = img;
-        slot.dataURL = e.target.result;
+        slot.dataURL = dataURL;
         slot.zoom = 1;
         slot.panX = 0.5;
         slot.panY = 0.5;
         renderSlot(slot);
+        resolve(slot);
       };
-      img.src = e.target.result;
+      img.onerror = function(){ reject(new Error("Could not read that image.")); };
+      img.src = dataURL;
+    });
+  }
+
+  function loadFile(slot, file){
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(e){
+      loadDataURL(slot, e.target.result).catch(function(){
+        alert("Could not read that image.");
+      });
     };
     reader.readAsDataURL(file);
   }
 
-  slots.forEach(function(slot){
+  function distance(a, b){
+    var dx = a.x - b.x;
+    var dy = a.y - b.y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  function pointerList(slot){
+    var list = [];
+    Object.keys(slot.pointers).forEach(function(id){
+      list.push(slot.pointers[id]);
+    });
+    return list;
+  }
+
+  function startGesture(slot){
+    var pts = pointerList(slot);
+    if (pts.length >= 2){
+      var rect = slot.el.getBoundingClientRect();
+      slot.gesture = {
+        mode: "pinch",
+        startDist: Math.max(8, distance(pts[0], pts[1])),
+        startZoom: slot.zoom,
+        startPanX: slot.panX,
+        startPanY: slot.panY,
+        startMidX: (pts[0].x + pts[1].x) / 2 - rect.left,
+        startMidY: (pts[0].y + pts[1].y) / 2 - rect.top
+      };
+      return;
+    }
+    if (pts.length === 1){
+      var m = placementFor(slot);
+      slot.gesture = {
+        mode: "pan",
+        pointerId: pts[0].id,
+        startX: pts[0].x,
+        startY: pts[0].y,
+        panX: slot.panX,
+        panY: slot.panY,
+        rangeX: Math.max(m.bgW - m.cw, 0),
+        rangeY: Math.max(m.bgH - m.ch, 0)
+      };
+      return;
+    }
+    slot.gesture = null;
+  }
+
+  function applyPinch(slot){
+    var g = slot.gesture;
+    if (!g || g.mode !== "pinch") return;
+    var pts = pointerList(slot);
+    if (pts.length < 2) return;
+    var rect = slot.el.getBoundingClientRect();
+    var dist = Math.max(8, distance(pts[0], pts[1]));
+    var midX = (pts[0].x + pts[1].x) / 2 - rect.left;
+    var midY = (pts[0].y + pts[1].y) / 2 - rect.top;
+    setZoomAround(
+      slot,
+      g.startZoom,
+      g.startPanX,
+      g.startPanY,
+      g.startZoom * (dist / g.startDist),
+      g.startMidX,
+      g.startMidY,
+      midX,
+      midY
+    );
+  }
+
+  function bindSlot(slot){
     var fileInput = slot.el.querySelector('[data-action="file"]');
     var removeBtn = slot.el.querySelector('[data-action="remove"]');
     var zoomInput = slot.el.querySelector('[data-action="zoom"]');
+    var listening = false;
+
+    function onDocMove(e){
+      var pt = slot.pointers[e.pointerId];
+      if (!pt) return;
+      pt.x = e.clientX;
+      pt.y = e.clientY;
+      if (!slot.gesture) return;
+      if (slot.gesture.mode === "pan"){
+        if (slot.gesture.pointerId !== e.pointerId) return;
+        var dx = e.clientX - slot.gesture.startX;
+        var dy = e.clientY - slot.gesture.startY;
+        slot.panX = slot.gesture.rangeX > 0
+          ? clamp(slot.gesture.panX - dx / slot.gesture.rangeX, 0, 1)
+          : 0.5;
+        slot.panY = slot.gesture.rangeY > 0
+          ? clamp(slot.gesture.panY - dy / slot.gesture.rangeY, 0, 1)
+          : 0.5;
+        renderSlot(slot);
+      } else if (slot.gesture.mode === "pinch"){
+        applyPinch(slot);
+      }
+    }
+    function onDocUp(e){
+      if (!slot.pointers[e.pointerId]) return;
+      delete slot.pointers[e.pointerId];
+      if (pointerList(slot).length === 0){
+        slot.gesture = null;
+        if (listening){
+          document.removeEventListener("pointermove", onDocMove);
+          document.removeEventListener("pointerup", onDocUp);
+          document.removeEventListener("pointercancel", onDocUp);
+          listening = false;
+        }
+        return;
+      }
+      startGesture(slot);
+    }
+    function armDoc(){
+      if (listening) return;
+      listening = true;
+      document.addEventListener("pointermove", onDocMove);
+      document.addEventListener("pointerup", onDocUp);
+      document.addEventListener("pointercancel", onDocUp);
+    }
 
     slot.el.addEventListener("click", function(e){
-      if (slot.img) return; // filled slots use drag, not click
-      if (e.target === removeBtn || e.target === zoomInput) return;
+      if (slot.img) return;
+      if (e.target.closest(".remove-btn, .zoom-bar, input, button")) return;
       fileInput.click();
     });
 
     fileInput.addEventListener("change", function(e){
-      loadFile(slot, e.target.files[0]);
+      loadFile(slot, e.target.files && e.target.files[0]);
       fileInput.value = "";
     });
     fileInput.addEventListener("click", function(e){ e.stopPropagation(); });
@@ -568,71 +1197,69 @@
       slot.zoom = 1;
       slot.panX = 0.5;
       slot.panY = 0.5;
+      slot.pointers = {};
+      slot.gesture = null;
       renderSlot(slot);
     });
 
     zoomInput.addEventListener("click", function(e){ e.stopPropagation(); });
     zoomInput.addEventListener("input", function(e){
-      slot.zoom = parseInt(e.target.value, 10) / 100;
+      slot.zoom = clamp(parseInt(e.target.value, 10) / 100, MIN_ZOOM, MAX_ZOOM);
       renderSlot(slot);
     });
 
-    // drag to pan
-    var dragState = null;
     slot.el.addEventListener("pointerdown", function(e){
       if (!slot.img) return;
-      if (e.target === removeBtn || e.target === zoomInput) return;
-      var m = getMetrics(slot);
-      dragState = {
-        startX: e.clientX,
-        startY: e.clientY,
-        panX: slot.panX,
-        panY: slot.panY,
-        rangeX: Math.max(m.bgW - m.cw, 0),
-        rangeY: Math.max(m.bgH - m.ch, 0)
-      };
-      slot.el.setPointerCapture(e.pointerId);
+      if (e.target.closest(".remove-btn, .zoom-bar, input, button")) return;
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      e.preventDefault();
+      slot.pointers[e.pointerId] = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      try { slot.el.setPointerCapture(e.pointerId); } catch (err) {}
+      startGesture(slot);
+      armDoc();
     });
-    slot.el.addEventListener("pointermove", function(e){
-      if (!dragState) return;
-      var dx = e.clientX - dragState.startX;
-      var dy = e.clientY - dragState.startY;
-      slot.panX = dragState.rangeX > 0
-        ? clamp(dragState.panX - dx / dragState.rangeX, 0, 1)
-        : 0.5;
-      slot.panY = dragState.rangeY > 0
-        ? clamp(dragState.panY - dy / dragState.rangeY, 0, 1)
-        : 0.5;
-      renderSlot(slot);
+
+    slot.el.addEventListener("wheel", function(e){
+      if (!slot.img) return;
+      if (e.target.closest("input, button, .zoom-bar")) return;
+      e.preventDefault();
+      var rect = slot.el.getBoundingClientRect();
+      var px = e.clientX - rect.left;
+      var py = e.clientY - rect.top;
+      var delta = e.deltaY;
+      if (e.deltaMode === 1) delta *= 16;
+      else if (e.deltaMode === 2) delta *= rect.height;
+      var factor = Math.exp(-delta * 0.0012);
+      setZoomAround(slot, slot.zoom, slot.panX, slot.panY, slot.zoom * factor, px, py);
+    }, { passive: false });
+
+    slot.el.addEventListener("contextmenu", function(e){
+      if (e.target.closest("input, button, .zoom-bar")) return;
+      e.preventDefault();
     });
-    function endDrag(e){
-      dragState = null;
-    }
-    slot.el.addEventListener("pointerup", endDrag);
-    slot.el.addEventListener("pointercancel", endDrag);
-  });
+  }
 
-  function clamp(v, lo, hi){ return Math.min(hi, Math.max(lo, v)); }
+  slots.forEach(bindSlot);
 
-  // ---- layout buttons ----
   document.querySelectorAll(".layout-btn").forEach(function(btn){
     btn.addEventListener("click", function(){
       applyLayout(btn.dataset.layout);
     });
   });
 
-  // ---- canvas shape ----
   document.querySelectorAll(".chip-btn").forEach(function(btn){
     btn.addEventListener("click", function(){
       document.querySelectorAll(".chip-btn").forEach(function(b){ b.classList.remove("active"); });
       btn.classList.add("active");
       frame.classList.remove("shape-square", "shape-portrait", "shape-landscape");
       frame.classList.add(btn.dataset.shape);
-      requestAnimationFrame(renderAll);
+      requestAnimationFrame(function(){
+        positionHandles();
+        renderAll();
+      });
     });
   });
 
-  // ---- border color ----
   var swatchRow = document.getElementById("swatchRow");
   var customColorInput = document.getElementById("customColor");
   SWATCHES.forEach(function(color, i){
@@ -656,7 +1283,6 @@
     document.documentElement.style.setProperty("--border-color", color);
   }
 
-  // ---- border width ----
   var borderWidthInput = document.getElementById("borderWidth");
   var borderWidthOut = document.getElementById("borderWidthOut");
   var borderMinBtn = document.getElementById("borderMinBtn");
@@ -667,7 +1293,8 @@
     borderWidthInput.value = v;
     document.documentElement.style.setProperty("--border-width", v + "px");
     borderWidthOut.textContent = v + "px";
-    requestAnimationFrame(renderAll);
+    positionHandles();
+    renderAll();
   }
 
   borderMinBtn.textContent = borderWidthInput.min + "px";
@@ -685,11 +1312,18 @@
     setBorderWidth(borderWidthInput.max);
   });
 
-  window.addEventListener("resize", function(){
-    requestAnimationFrame(renderAll);
-  });
+  if (typeof ResizeObserver === "function"){
+    new ResizeObserver(function(){
+      positionHandles();
+      renderAll();
+    }).observe(frame);
+  } else {
+    window.addEventListener("resize", function(){
+      positionHandles();
+      requestAnimationFrame(renderAll);
+    });
+  }
 
-  // ---- reset border to the built-in defaults ----
   var resetBorderBtn = document.getElementById("resetBorderBtn");
 
   function applyBorderDefaults(){
@@ -704,10 +1338,12 @@
   resetBorderBtn.addEventListener("click", function(){
     applyBorderDefaults();
   });
+  resetCellsBtn.addEventListener("click", function(){
+    resetCells();
+  });
 
-  // ---- export ----
   document.getElementById("downloadBtn").addEventListener("click", function(){
-    var hasAny = slots.some(function(s){ return s.img; });
+    var hasAny = slots.some(function(s){ return s.img && !s.el.classList.contains("hidden"); });
     if (!hasAny){
       alert("Add at least one photo before downloading.");
       return;
@@ -722,7 +1358,7 @@
   });
 
   function exportCollage(){
-    var EXPORT_W = 1280; // sized for on-screen viewing/sharing, not print
+    var EXPORT_W = 1280;
     var frameRect = frame.getBoundingClientRect();
     var EXPORT_H = Math.round(EXPORT_W * (frameRect.height / frameRect.width));
     var scaleFactor = EXPORT_W / frameRect.width;
@@ -731,8 +1367,9 @@
     canvas.width = EXPORT_W;
     canvas.height = EXPORT_H;
     var ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
 
-    // border/background color
     var borderColor = getComputedStyle(document.documentElement).getPropertyValue("--border-color").trim();
     ctx.fillStyle = borderColor || "#c21d2e";
     ctx.fillRect(0, 0, EXPORT_W, EXPORT_H);
@@ -744,17 +1381,14 @@
       var dy = (r.top - frameRect.top) * scaleFactor;
       var dw = r.width * scaleFactor;
       var dh = r.height * scaleFactor;
-
-      var iw = slot.img.naturalWidth, ih = slot.img.naturalHeight;
-      var cover = Math.max(dw / iw, dh / ih);
-      var total = cover * slot.zoom;
-      var bgW = iw * total, bgH = ih * total;
-      var posXpx = (dw - bgW) * slot.panX;
-      var posYpx = (dh - bgH) * slot.panY;
-      var sx = -posXpx / total;
-      var sy = -posYpx / total;
-      var sw = dw / total;
-      var sh = dh / total;
+      var iw = slot.img.naturalWidth;
+      var ih = slot.img.naturalHeight;
+      if (!iw || !ih || dw < 1 || dh < 1) return;
+      var m = placement(dw, dh, iw, ih, slot.zoom, slot.panX, slot.panY);
+      var sx = -m.ox / m.total;
+      var sy = -m.oy / m.total;
+      var sw = dw / m.total;
+      var sh = dh / m.total;
 
       ctx.save();
       ctx.beginPath();
@@ -767,11 +1401,26 @@
     return canvas;
   }
 
-  // expose for automated testing
+  function appVersion(){
+    var meta = document.querySelector('meta[name="app-version"]');
+    return meta ? meta.getAttribute("content") : "";
+  }
+
   window.__collage = {
     applyLayout: applyLayout,
     exportCollage: exportCollage,
-    slots: slots
+    slots: slots,
+    getSplits: function(){ return getSplits(currentLayout); },
+    resetCells: resetCells,
+    loadDataURL: function(index, url){ return loadDataURL(slots[index], url); },
+    renderAll: renderAll,
+    placementFor: function(index){
+      var slot = slots[index];
+      if (!slot || !slot.img) return null;
+      return placementFor(slot);
+    },
+    seams: function(){ return computeSeams(specOf(currentLayout)); },
+    version: appVersion
   };
 
   applyBorderDefaults();
