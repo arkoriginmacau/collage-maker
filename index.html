@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="app-version" content="1.1.0">
+<meta name="app-version" content="1.2.0">
 <title>Photo Collage Maker</title>
 <style>
   :root{
@@ -72,7 +72,7 @@
     width:100%;
     border-radius:4px;
     overflow:hidden;
-    touch-action:none;
+    touch-action:pan-y;
     -webkit-user-select:none;
     user-select:none;
     -webkit-touch-callout:none;
@@ -99,7 +99,7 @@
     min-height:0;
     min-width:0;
     cursor:pointer;
-    touch-action:none;
+    touch-action:pan-y;
     -webkit-user-select:none;
     user-select:none;
     -webkit-touch-callout:none;
@@ -124,6 +124,10 @@
   }
   .slot.filled{ cursor:grab; }
   .slot.filled:active{ cursor:grabbing; }
+  .slot.dragging{
+    cursor:grabbing;
+    touch-action:none;
+  }
   .slot.filled .empty-hint{ display:none; }
 
   .slot .remove-btn{
@@ -447,7 +451,7 @@
           <div class="handles" id="handles"></div>
         </div>
       </div>
-      <p class="hint-text">Drag the handles between cells to resize them. Drag a photo to move it. Zoom with Size, the scroll wheel, or pinch.</p>
+      <p class="hint-text">Drag the handles between cells to resize them. Drag a photo to move it — on a phone, hold briefly or swipe sideways; a vertical swipe scrolls. Zoom with Size, the scroll wheel, or pinch.</p>
     </div>
 
     <div class="panel">
@@ -503,7 +507,7 @@
     </div>
   </div>
 
-  <footer class="site-footer">Photo Collage Maker <span data-version-slot>v1.1.0</span></footer>
+  <footer class="site-footer">Photo Collage Maker <span data-version-slot>v1.2.0</span></footer>
 
 <script>
 (function(){
@@ -527,6 +531,8 @@
   var MIN_CELL_PX = 48;
   var MIN_ZOOM = 1;
   var MAX_ZOOM = 3;
+  var HOLD_MS = 200;
+  var DRAG_SLOP = 10;
 
   try {
     localStorage.removeItem("collageDefaultBorderColor");
@@ -611,6 +617,7 @@
     var zoomInput = slot.el.querySelector('[data-action="zoom"]');
     if (!slot.img || !slot.img.naturalWidth || !slot.img.naturalHeight){
       slot.el.classList.remove("filled");
+      slot.el.classList.remove("dragging");
       slot.el.style.backgroundImage = "";
       slot.el.style.backgroundSize = "";
       slot.el.style.backgroundPosition = "";
@@ -1074,6 +1081,21 @@
     return list;
   }
 
+  function beginPan(slot, pt, startX, startY){
+    var m = placementFor(slot);
+    slot.gesture = {
+      mode: "pan",
+      pointerId: pt.id,
+      startX: startX,
+      startY: startY,
+      panX: slot.panX,
+      panY: slot.panY,
+      rangeX: Math.max(m.bgW - m.cw, 0),
+      rangeY: Math.max(m.bgH - m.ch, 0)
+    };
+    slot.el.classList.add("dragging");
+  }
+
   function startGesture(slot){
     var pts = pointerList(slot);
     if (pts.length >= 2){
@@ -1087,23 +1109,15 @@
         startMidX: (pts[0].x + pts[1].x) / 2 - rect.left,
         startMidY: (pts[0].y + pts[1].y) / 2 - rect.top
       };
+      slot.el.classList.add("dragging");
       return;
     }
     if (pts.length === 1){
-      var m = placementFor(slot);
-      slot.gesture = {
-        mode: "pan",
-        pointerId: pts[0].id,
-        startX: pts[0].x,
-        startY: pts[0].y,
-        panX: slot.panX,
-        panY: slot.panY,
-        rangeX: Math.max(m.bgW - m.cw, 0),
-        rangeY: Math.max(m.bgH - m.ch, 0)
-      };
+      beginPan(slot, pts[0], pts[0].x, pts[0].y);
       return;
     }
     slot.gesture = null;
+    slot.el.classList.remove("dragging");
   }
 
   function applyPinch(slot){
@@ -1134,14 +1148,59 @@
     var zoomInput = slot.el.querySelector('[data-action="zoom"]');
     var listening = false;
 
+    function clearHold(){
+      if (slot._holdTimer){
+        clearTimeout(slot._holdTimer);
+        slot._holdTimer = null;
+      }
+    }
+    function endListening(){
+      if (!listening) return;
+      document.removeEventListener("pointermove", onDocMove);
+      document.removeEventListener("pointerup", onDocUp);
+      document.removeEventListener("pointercancel", onDocUp);
+      listening = false;
+    }
+    function releasePointer(pointerId){
+      delete slot.pointers[pointerId];
+      clearHold();
+      if (pointerList(slot).length === 0){
+        slot.gesture = null;
+        slot.el.classList.remove("dragging");
+        endListening();
+        return;
+      }
+      startGesture(slot);
+    }
+    function commitPan(pt){
+      clearHold();
+      try { slot.el.setPointerCapture(pt.id); } catch (err) {}
+      if (!slot.gesture) beginPan(slot, pt, pt.originX, pt.originY);
+    }
     function onDocMove(e){
       var pt = slot.pointers[e.pointerId];
       if (!pt) return;
       pt.x = e.clientX;
       pt.y = e.clientY;
+      if (!slot.gesture){
+        var dx0 = e.clientX - pt.originX;
+        var dy0 = e.clientY - pt.originY;
+        var adx = Math.abs(dx0);
+        var ady = Math.abs(dy0);
+        if (adx < DRAG_SLOP && ady < DRAG_SLOP) return;
+        if (adx >= DRAG_SLOP && adx > ady){
+          commitPan(pt);
+        } else if (ady >= DRAG_SLOP && ady >= adx){
+          releasePointer(e.pointerId);
+          return;
+        } else {
+          return;
+        }
+      }
       if (!slot.gesture) return;
       if (slot.gesture.mode === "pan"){
         if (slot.gesture.pointerId !== e.pointerId) return;
+        if (e.cancelable) e.preventDefault();
         var dx = e.clientX - slot.gesture.startX;
         var dy = e.clientY - slot.gesture.startY;
         slot.panX = slot.gesture.rangeX > 0
@@ -1152,23 +1211,13 @@
           : 0.5;
         renderSlot(slot);
       } else if (slot.gesture.mode === "pinch"){
+        if (e.cancelable) e.preventDefault();
         applyPinch(slot);
       }
     }
     function onDocUp(e){
       if (!slot.pointers[e.pointerId]) return;
-      delete slot.pointers[e.pointerId];
-      if (pointerList(slot).length === 0){
-        slot.gesture = null;
-        if (listening){
-          document.removeEventListener("pointermove", onDocMove);
-          document.removeEventListener("pointerup", onDocUp);
-          document.removeEventListener("pointercancel", onDocUp);
-          listening = false;
-        }
-        return;
-      }
-      startGesture(slot);
+      releasePointer(e.pointerId);
     }
     function armDoc(){
       if (listening) return;
@@ -1177,6 +1226,10 @@
       document.addEventListener("pointerup", onDocUp);
       document.addEventListener("pointercancel", onDocUp);
     }
+
+    slot.el.addEventListener("touchmove", function(e){
+      if (slot.el.classList.contains("dragging")) e.preventDefault();
+    }, { passive: false });
 
     slot.el.addEventListener("click", function(e){
       if (slot.img) return;
@@ -1199,6 +1252,8 @@
       slot.panY = 0.5;
       slot.pointers = {};
       slot.gesture = null;
+      clearHold();
+      endListening();
       renderSlot(slot);
     });
 
@@ -1212,11 +1267,35 @@
       if (!slot.img) return;
       if (e.target.closest(".remove-btn, .zoom-bar, input, button")) return;
       if (e.pointerType === "mouse" && e.button !== 0) return;
-      e.preventDefault();
-      slot.pointers[e.pointerId] = { id: e.pointerId, x: e.clientX, y: e.clientY };
-      try { slot.el.setPointerCapture(e.pointerId); } catch (err) {}
-      startGesture(slot);
+      var pt = {
+        id: e.pointerId,
+        x: e.clientX,
+        y: e.clientY,
+        originX: e.clientX,
+        originY: e.clientY
+      };
+      slot.pointers[e.pointerId] = pt;
       armDoc();
+      if (pointerList(slot).length >= 2){
+        if (e.cancelable) e.preventDefault();
+        clearHold();
+        try { slot.el.setPointerCapture(e.pointerId); } catch (err) {}
+        startGesture(slot);
+        return;
+      }
+      if (e.pointerType === "mouse"){
+        if (e.cancelable) e.preventDefault();
+        try { slot.el.setPointerCapture(e.pointerId); } catch (err) {}
+        beginPan(slot, pt, pt.originX, pt.originY);
+        return;
+      }
+      clearHold();
+      slot._holdTimer = setTimeout(function(){
+        slot._holdTimer = null;
+        if (!slot.pointers[e.pointerId] || slot.gesture) return;
+        try { slot.el.setPointerCapture(e.pointerId); } catch (err) {}
+        beginPan(slot, pt, pt.originX, pt.originY);
+      }, HOLD_MS);
     });
 
     slot.el.addEventListener("wheel", function(e){
@@ -1312,11 +1391,18 @@
     setBorderWidth(borderWidthInput.max);
   });
 
+  function postAppHeight(){
+    parent.postMessage({ type: "lia-height", height: document.documentElement.scrollHeight }, "*");
+  }
+  window.addEventListener("load", postAppHeight);
+  window.addEventListener("resize", postAppHeight);
+
   if (typeof ResizeObserver === "function"){
     new ResizeObserver(function(){
       positionHandles();
       renderAll();
     }).observe(frame);
+    new ResizeObserver(postAppHeight).observe(document.documentElement);
   } else {
     window.addEventListener("resize", function(){
       positionHandles();
