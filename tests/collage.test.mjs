@@ -41,11 +41,19 @@ page.on("pageerror", (err) => pageErrors.push(String(err)));
 page.on("console", (msg) => {
   if (msg.type() === "error") pageErrors.push(msg.text());
 });
+await page.evaluateOnNewDocument(() => {
+  window.__liaHeights = [];
+  window.addEventListener("message", (event) => {
+    var data = event.data;
+    if (data && data.type === "lia-height") window.__liaHeights.push(data.height);
+  });
+});
 
 try {
   await page.setViewport({ width: 1100, height: 900, deviceScaleFactor: 1 });
   await page.goto(url, { waitUntil: "load" });
   await page.waitForSelector(".seam-v");
+  await page.waitForFunction(() => window.__liaHeights && window.__liaHeights.length > 0);
 
   const version = await page.$eval("[data-version-slot]", (el) => el.textContent.trim());
   assert(version === "v" + pkg.version, "footer version should be v" + pkg.version + ", got " + version);
@@ -53,6 +61,33 @@ try {
   assert(meta === pkg.version, "meta version mismatch");
   const apiVersion = await page.evaluate(() => window.__collage.version());
   assert(apiVersion === pkg.version, "api version mismatch");
+
+  const touchAction = await page.evaluate(() => {
+    function ta(sel) {
+      return getComputedStyle(document.querySelector(sel)).touchAction;
+    }
+    return { frame: ta("#frame"), slot: ta(".slot"), seam: ta(".seam") };
+  });
+  assert(touchAction.frame === "pan-y", "frame should allow vertical scrolling, got " + touchAction.frame);
+  assert(touchAction.slot === "pan-y", "empty slot should allow vertical scrolling, got " + touchAction.slot);
+  assert(touchAction.seam === "none", "divider should keep touch-action none, got " + touchAction.seam);
+
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const lia = await page.evaluate(() => ({
+    heights: window.__liaHeights.slice(),
+    scrollHeight: document.documentElement.scrollHeight
+  }));
+  assert(lia.heights.length > 0, "posts lia-height on load");
+  assert(lia.heights[lia.heights.length - 1] === lia.scrollHeight, "lia-height should match scrollHeight " + JSON.stringify(lia));
+  const liaCount = lia.heights.length;
+  await page.setViewport({ width: 1100, height: 860, deviceScaleFactor: 1 });
+  await page.waitForFunction((count) => window.__liaHeights.length > count, {}, liaCount);
+  const liaResized = await page.evaluate(() => ({
+    height: window.__liaHeights[window.__liaHeights.length - 1],
+    scrollHeight: document.documentElement.scrollHeight
+  }));
+  assert(liaResized.height === liaResized.scrollHeight, "resize posts the new scroll height " + JSON.stringify(liaResized));
+  await page.setViewport({ width: 1100, height: 900, deviceScaleFactor: 1 });
 
   const seamPlan = await page.evaluate(() => {
     const keys = ["1", "2v", "2h", "3v", "4v", "5v", "3l", "3t", "4"];
@@ -266,6 +301,76 @@ try {
   assert(pan.covers, "panned photo still covers the cell");
   assert(pan.ox && pan.oy, "on-screen background position matches the cover math");
 
+  const touchPan = await page.evaluate(async () => {
+    const slot = document.querySelector('.slot[data-index="0"]');
+    window.__collage.slots[0].zoom = 2;
+    window.__collage.slots[0].panX = 0.5;
+    window.__collage.slots[0].panY = 0.5;
+    window.__collage.renderAll();
+    const r = slot.getBoundingClientRect();
+    const x = r.left + r.width / 2;
+    const y = r.top + r.height / 2;
+    function fire(type, dx, dy, id) {
+      const target = type === "pointerdown" ? slot : document;
+      target.dispatchEvent(new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        clientX: x + dx,
+        clientY: y + dy,
+        pointerId: id,
+        pointerType: "touch",
+        button: 0
+      }));
+    }
+    fire("pointerdown", 0, 0, 51);
+    fire("pointermove", 0, -80, 51);
+    fire("pointerup", 0, -80, 51);
+    const afterVertical = {
+      panX: window.__collage.slots[0].panX,
+      panY: window.__collage.slots[0].panY,
+      dragging: slot.classList.contains("dragging")
+    };
+    fire("pointerdown", 0, 0, 52);
+    fire("pointermove", -70, 4, 52);
+    const during = {
+      dragging: slot.classList.contains("dragging"),
+      touchAction: getComputedStyle(slot).touchAction
+    };
+    fire("pointerup", -70, 4, 52);
+    const afterHorizontal = {
+      panX: window.__collage.slots[0].panX,
+      dragging: slot.classList.contains("dragging")
+    };
+    window.__collage.slots[0].panX = 0.5;
+    window.__collage.slots[0].panY = 0.5;
+    window.__collage.renderAll();
+    fire("pointerdown", 0, 0, 53);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const held = {
+      dragging: slot.classList.contains("dragging"),
+      touchAction: getComputedStyle(slot).touchAction
+    };
+    fire("pointermove", 0, -60, 53);
+    fire("pointerup", 0, -60, 53);
+    return {
+      afterVertical,
+      during,
+      afterHorizontal,
+      held,
+      panY: window.__collage.slots[0].panY,
+      dragging: slot.classList.contains("dragging")
+    };
+  });
+  assert(touchPan.afterVertical.panX === 0.5 && touchPan.afterVertical.panY === 0.5, "vertical touch swipe does not pan the photo " + JSON.stringify(touchPan.afterVertical));
+  assert(!touchPan.afterVertical.dragging, "vertical swipe does not leave the slot dragging");
+  assert(touchPan.during.dragging, "horizontal touch marks the slot dragging");
+  assert(touchPan.during.touchAction === "none", "dragging slot uses touch-action none, got " + touchPan.during.touchAction);
+  assert(touchPan.afterHorizontal.panX > 0.5, "horizontal touch pans the photo (panX " + touchPan.afterHorizontal.panX + ")");
+  assert(!touchPan.afterHorizontal.dragging, "dragging class clears when the finger lifts");
+  assert(touchPan.held.dragging && touchPan.held.touchAction === "none", "holding a photo starts a drag");
+  assert(Math.abs(touchPan.panY - 0.5) > 0.02, "a drag after the hold can move the photo vertically (panY " + touchPan.panY + ")");
+  assert(!touchPan.dragging, "hold drag clears when the finger lifts");
+
   const pinch = await page.evaluate(() => {
     const slot = document.querySelector('.slot[data-index="1"]');
     const r = slot.getBoundingClientRect();
@@ -423,13 +528,61 @@ try {
   assert(alerts.length === 1 && alerts[0].includes("Add at least one photo"), "empty download still warns");
 
   await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  await page.evaluate(() => {
+    window.__collage.applyLayout("2v");
+    window.__collage.resetCells();
+    window.scrollTo(0, 0);
+  });
+  const emptyPoint = await slotPoint(page, '.slot[data-index="0"]', 0.35, 0.4);
+  const emptySwipe = await touchSwipe(page, emptyPoint.x, emptyPoint.y, 0, -170, 0);
+  assert(emptySwipe.scroll > emptySwipe.before + 30, "vertical swipe on an empty cell scrolls the page (" + emptySwipe.before + " -> " + emptySwipe.scroll + ")");
+  await settleScroll(page);
+
   await page.evaluate(async (redUrl, blueUrl) => {
     window.__collage.applyLayout("2v");
     window.__collage.resetCells();
     await window.__collage.loadDataURL(0, redUrl);
     await window.__collage.loadDataURL(1, blueUrl);
+    window.__collage.slots[0].zoom = 1;
+    window.__collage.slots[0].panX = 0.5;
+    window.__collage.slots[0].panY = 0.5;
+    window.__collage.renderAll();
   }, red, blue);
   await page.waitForSelector(".seam-v");
+  await settleScroll(page);
+
+  const filledPoint = await slotPoint(page, '.slot[data-index="0"]', 0.35, 0.42);
+  const filledSwipe = await touchSwipe(page, filledPoint.x, filledPoint.y, 0, -170, 0);
+  assert(filledSwipe.scroll > 30, "vertical swipe over a photo scrolls the page (" + filledSwipe.scroll + ")");
+  near(filledSwipe.panX, 0.5, 0.02, "vertical swipe over a photo does not pan it sideways");
+  near(filledSwipe.panY, 0.5, 0.02, "vertical swipe over a photo does not pan it");
+  await settleScroll(page);
+
+  const horizontalPoint = await slotPoint(page, '.slot[data-index="0"]', 0.55, 0.42);
+  const horizontalSwipe = await touchSwipe(page, horizontalPoint.x, horizontalPoint.y, -110, 0, 0);
+  assert(horizontalSwipe.panX > 0.55, "sideways touch on a photo pans it (panX " + horizontalSwipe.panX + ")");
+  assert(horizontalSwipe.scroll < 20, "sideways photo drag does not scroll the page");
+  assert(!horizontalSwipe.dragging, "photo drag releases cleanly on touch end");
+  await settleScroll(page);
+
+  await page.evaluate(() => {
+    window.__collage.slots[0].zoom = 2;
+    window.__collage.slots[0].panX = 0.5;
+    window.__collage.slots[0].panY = 0.5;
+    window.__collage.renderAll();
+    window.scrollTo(0, 0);
+  });
+  const holdPoint = await slotPoint(page, '.slot[data-index="0"]', 0.35, 0.42);
+  const holdSwipe = await touchSwipe(page, holdPoint.x, holdPoint.y, 0, -90, 280);
+  assert(Math.abs(holdSwipe.panY - 0.5) > 0.02, "holding then dragging pans the photo (panY " + holdSwipe.panY + ")");
+  assert(holdSwipe.scroll < 20, "a held photo drag does not scroll the page");
+  await settleScroll(page);
+  await page.evaluate(() => {
+    window.__collage.slots[0].zoom = 1;
+    window.__collage.slots[0].panX = 0.5;
+    window.__collage.slots[0].panY = 0.5;
+    window.__collage.renderAll();
+  });
 
   const mobileBefore = await cellWidths(page);
   const touchBox = await page.$eval(".seam-v", (el) => {
@@ -512,7 +665,8 @@ try {
   assert(tight.seams === 2, "four-up layout has both dividers");
   assert(tight.top > tight.bottom, "vertical divider drag resizes the rows above and below");
 
-  await page.setViewport({ width: 1100, height: 900, deviceScaleFactor: 1 });
+  await page.setViewport({ width: 1100, height: 900, deviceScaleFactor: 1, hasTouch: true, isMobile: false });
+  await settleScroll(page);
   await page.evaluate(async (redUrl, blueUrl, bandsUrl) => {
     window.__collage.applyLayout("4");
     window.__collage.resetCells();
@@ -546,6 +700,60 @@ try {
     }
   }, red, blue, bands);
 
+  const desktopWidths = await cellWidths(page);
+  const desktopSeam = await page.$eval(".seam-v", (el) => {
+    const r = el.getBoundingClientRect();
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  });
+  const desktopClient = await page.createCDPSession();
+  await desktopClient.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [{ x: Math.round(desktopSeam.x), y: Math.round(desktopSeam.y), id: 1 }]
+  });
+  await desktopClient.send("Input.dispatchTouchEvent", {
+    type: "touchMove",
+    touchPoints: [{ x: Math.round(desktopSeam.x + 40), y: Math.round(desktopSeam.y), id: 1 }]
+  });
+  await desktopClient.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await desktopClient.detach();
+  const desktopWidthsAfter = await cellWidths(page);
+  assert(desktopWidthsAfter[0] > desktopWidths[0] + 20, "desktop touch drag resizes the divider (" + desktopWidths[0] + " -> " + desktopWidthsAfter[0] + ")");
+
+  await page.evaluate(() => {
+    window.__collage.slots[0].zoom = 1.8;
+    window.__collage.slots[0].panX = 0.5;
+    window.__collage.slots[0].panY = 0.5;
+    window.__collage.renderAll();
+    window.scrollTo(0, 0);
+  });
+  const desktopPhoto = await slotPoint(page, '.slot[data-index="0"]', 0.45, 0.35);
+  const desktopPhotoDrag = await touchSwipe(page, desktopPhoto.x, desktopPhoto.y, -80, 0, 0);
+  assert(desktopPhotoDrag.panX > 0.55, "desktop emulated touch pans a photo sideways (panX " + desktopPhotoDrag.panX + ")");
+  const desktopZoom = await page.evaluate(() => {
+    const slot = document.querySelector('.slot[data-index="0"]');
+    const r = slot.getBoundingClientRect();
+    const y = r.top + r.height * 0.35;
+    const mid = r.left + r.width * 0.45;
+    function fire(type, id, x, target) {
+      (target || slot).dispatchEvent(new PointerEvent(type, {
+        bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: id, pointerType: "touch", button: 0
+      }));
+    }
+    fire("pointerdown", 61, mid - 20);
+    fire("pointerdown", 62, mid + 20);
+    fire("pointermove", 61, mid - 70, document);
+    fire("pointermove", 62, mid + 70, document);
+    const zoom = window.__collage.slots[0].zoom;
+    fire("pointerup", 61, mid - 70, document);
+    fire("pointerup", 62, mid + 70, document);
+    window.__collage.slots[0].zoom = 1.6;
+    window.__collage.slots[0].panX = 0.15;
+    window.__collage.slots[0].panY = 0.4;
+    window.__collage.renderAll();
+    return zoom;
+  });
+  assert(desktopZoom > 1.8, "desktop emulated touch pinch zooms the photo, got " + desktopZoom);
+
   await mkdir(shotDir, { recursive: true });
   await page.screenshot({ path: join(shotDir, "desktop-resized-collage.png"), fullPage: true });
   const preview = await page.evaluate(() => {
@@ -574,6 +782,51 @@ try {
 } finally {
   await browser.close();
   server.close();
+}
+
+async function slotPoint(page, selector, xRatio, yRatio) {
+  return page.$eval(selector, (el, xRatio, yRatio) => {
+    const r = el.getBoundingClientRect();
+    return { x: r.left + r.width * xRatio, y: r.top + r.height * yRatio };
+  }, xRatio, yRatio);
+}
+
+async function touchSwipe(page, x, y, dx, dy, holdMs) {
+  const client = await page.createCDPSession();
+  const before = await page.evaluate(() => window.scrollY);
+  await client.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [{ x: Math.round(x), y: Math.round(y), id: 1 }]
+  });
+  if (holdMs) await new Promise((resolve) => setTimeout(resolve, holdMs));
+  const steps = 8;
+  for (let i = 1; i <= steps; i++) {
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{
+        x: Math.round(x + (dx * i) / steps),
+        y: Math.round(y + (dy * i) / steps),
+        id: 1
+      }]
+    });
+    await new Promise((resolve) => setTimeout(resolve, 16));
+  }
+  await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  const after = await page.evaluate(() => ({
+    scroll: window.scrollY,
+    panX: window.__collage.slots[0].panX,
+    panY: window.__collage.slots[0].panY,
+    dragging: document.querySelector('.slot[data-index="0"]').classList.contains("dragging")
+  }));
+  await client.detach();
+  return { before, ...after };
+}
+
+async function settleScroll(page) {
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await new Promise((resolve) => setTimeout(resolve, 40));
 }
 
 async function cellWidths(page) {
