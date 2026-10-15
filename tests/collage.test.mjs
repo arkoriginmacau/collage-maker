@@ -89,6 +89,64 @@ try {
   assert(liaResized.height === liaResized.scrollHeight, "resize posts the new scroll height " + JSON.stringify(liaResized));
   await page.setViewport({ width: 1100, height: 900, deviceScaleFactor: 1 });
 
+  const scrollChrome = await page.evaluate(() => {
+    const htmlStyle = getComputedStyle(document.documentElement);
+    const bodyStyle = getComputedStyle(document.body);
+    const offenders = [];
+    const nodes = [document.documentElement, document.body, ...document.querySelectorAll("body *")];
+    nodes.forEach((el) => {
+      const cs = getComputedStyle(el);
+      if (cs.overflowY === "auto" || cs.overflowY === "scroll" || cs.overflowX === "auto" || cs.overflowX === "scroll") {
+        offenders.push((el.id || el.className || el.tagName) + " " + cs.overflowX + "/" + cs.overflowY);
+      }
+    });
+    return {
+      htmlOverflow: htmlStyle.overflowY,
+      bodyOverflow: bodyStyle.overflowY,
+      htmlBar: htmlStyle.scrollbarWidth,
+      bodyBar: bodyStyle.scrollbarWidth,
+      htmlBehavior: htmlStyle.scrollBehavior,
+      bodyBehavior: bodyStyle.scrollBehavior,
+      htmlWebkit: getComputedStyle(document.documentElement, "::-webkit-scrollbar").display,
+      bodyWebkit: getComputedStyle(document.body, "::-webkit-scrollbar").display,
+      offenders
+    };
+  });
+  assert(scrollChrome.htmlBar === "none" && scrollChrome.bodyBar === "none", "scrollbar hidden on html/body " + JSON.stringify(scrollChrome));
+  assert(scrollChrome.htmlWebkit === "none" && scrollChrome.bodyWebkit === "none", "webkit scrollbar hidden " + JSON.stringify(scrollChrome));
+  assert(scrollChrome.htmlOverflow === "visible" && scrollChrome.bodyOverflow === "visible", "html/body stay overflow visible " + JSON.stringify(scrollChrome));
+  assert(scrollChrome.htmlBehavior === "auto" && scrollChrome.bodyBehavior === "auto", "native scroll behavior unchanged " + JSON.stringify(scrollChrome));
+  assert(scrollChrome.offenders.length === 0, "no internal scroll container " + scrollChrome.offenders.join(", "));
+
+  await page.setViewport({ width: 390, height: 700, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const wheelPoint = await page.$eval("h1", (el) => {
+    const r = el.getBoundingClientRect();
+    return { x: r.x + 30, y: r.y + 8 };
+  });
+  await page.mouse.move(wheelPoint.x, wheelPoint.y);
+  await page.mouse.wheel({ deltaY: 100 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const wheelBefore = await page.evaluate(() => window.scrollY);
+  await page.mouse.wheel({ deltaY: 100 });
+  await page.mouse.wheel({ deltaY: 100 });
+  await page.mouse.wheel({ deltaY: 100 });
+  const wheelAfter = await page.evaluate(() => window.scrollY);
+  assert(wheelAfter - wheelBefore === 300, "wheel scroll stays 100px per notch (" + wheelBefore + " -> " + wheelAfter + ")");
+
+  const naturalHeight = await page.evaluate(() => document.documentElement.scrollHeight);
+  await page.setViewport({ width: 390, height: naturalHeight, deviceScaleFactor: 1, hasTouch: true, isMobile: true });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.mouse.wheel({ deltaY: 240 });
+  const fitted = await page.evaluate(() => ({
+    scrollY: window.scrollY,
+    scrollHeight: document.documentElement.scrollHeight,
+    clientHeight: document.documentElement.clientHeight
+  }));
+  assert(fitted.clientHeight === fitted.scrollHeight, "natural height fits the frame " + JSON.stringify(fitted));
+  assert(fitted.scrollY === 0, "a fitted frame does not scroll internally " + JSON.stringify(fitted));
+  await page.setViewport({ width: 1100, height: 900, deviceScaleFactor: 1 });
+
   const seamPlan = await page.evaluate(() => {
     const keys = ["1", "2v", "2h", "3v", "4v", "5v", "3l", "3t", "4"];
     const out = {};
