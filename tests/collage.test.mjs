@@ -157,7 +157,7 @@ try {
     window.__collage.applyLayout("2v");
     return out;
   });
-  assert(JSON.stringify(seamPlan["ls"]) === JSON.stringify(["v:0:0-2", "h:0:1-2"]), "ls seams " + seamPlan["ls"]);
+  assert(JSON.stringify(seamPlan["ls"]) === JSON.stringify(["v:0:1-2", "h:0:1-2"]), "ls seams " + seamPlan["ls"]);
   assert(JSON.stringify(seamPlan["2v"]) === JSON.stringify(["v:0:0-1"]), "2v seam " + seamPlan["2v"]);
   assert(JSON.stringify(seamPlan["2h"]) === JSON.stringify(["h:0:0-1"]), "2h seam " + seamPlan["2h"]);
   assert(seamPlan["3v"].length === 2 && seamPlan["3v"].every((s) => s.startsWith("v:")), "3v seams");
@@ -172,28 +172,17 @@ try {
     window.__collage.resetCells();
     const frame = document.getElementById("frame");
     const fr = frame.getBoundingClientRect();
-    const a = document.querySelector('.slot[data-index="0"]').getBoundingClientRect();
-    const b = document.querySelector('.slot[data-index="1"]').getBoundingClientRect();
-    const voidEl = document.getElementById("voidCell");
-    const vr = voidEl.getBoundingClientRect();
+    const lSlot = document.querySelector('.slot[data-index="0"]');
+    const square = document.querySelector('.slot[data-index="1"]');
+    const b = square.getBoundingClientRect();
     const h = document.querySelector(".seam-h").getBoundingClientRect();
     const v = document.querySelector(".seam-v").getBoundingClientRect();
-    function rel(r) {
-      return {
-        l: (r.left - fr.left) / fr.width,
-        t: (r.top - fr.top) / fr.height,
-        r: (r.right - fr.left) / fr.width,
-        b: (r.bottom - fr.top) / fr.height
-      };
+    function slotIndexAt(xRatio, yRatio) {
+      const hit = document.elementFromPoint(fr.left + fr.width * xRatio, fr.top + fr.height * yRatio);
+      const slot = hit && hit.closest ? hit.closest(".slot") : null;
+      return slot ? slot.dataset.index : "";
     }
-    const before = {
-      aw: a.width,
-      bw: b.width,
-      bh: b.height,
-      vw: vr.width,
-      vh: vr.height,
-      ah: a.height
-    };
+    const before = measure();
     seamDrag(document.querySelector(".seam-v"), 50, 0, 71);
     const afterV = measure();
     window.__collage.resetCells();
@@ -202,13 +191,19 @@ try {
     const snap = {
       hidden: document.querySelectorAll(".slot.hidden").length,
       resetDisabled: document.getElementById("resetCellsBtn").disabled,
-      voidHidden: voidEl.hidden,
-      voidSlot: voidEl.classList.contains("slot"),
-      voidText: voidEl.textContent,
-      areas: getComputedStyle(frame).gridTemplateAreas,
-      a: rel(a),
-      b: rel(b),
-      v: rel(vr),
+      noVoid: !document.getElementById("voidCell"),
+      clip: lSlot.style.clipPath.indexOf("polygon") === 0,
+      hits: {
+        topRight: slotIndexAt(0.75, 0.22),
+        bottomLeft: slotIndexAt(0.22, 0.75),
+        bottomRight: slotIndexAt(0.75, 0.78)
+      },
+      b: {
+        l: (b.left - fr.left) / fr.width,
+        t: (b.top - fr.top) / fr.height,
+        r: (b.right - fr.left) / fr.width,
+        b: (b.bottom - fr.top) / fr.height
+      },
       seam: {
         hLeft: (h.left - fr.left) / fr.width,
         hRight: (h.right - fr.left) / fr.width,
@@ -220,14 +215,13 @@ try {
     window.__collage.applyLayout("3l");
     const three = {
       count: document.querySelectorAll(".slot:not(.hidden)").length,
-      voidHidden: document.getElementById("voidCell").hidden,
       areas: getComputedStyle(frame).gridTemplateAreas
     };
     window.__collage.applyLayout("2v");
     return {
       ...snap,
       first: document.querySelector(".layout-btn").dataset.layout,
-      order: [...document.querySelectorAll(".layout-btn")].map((b) => b.dataset.layout).join(","),
+      order: [...document.querySelectorAll(".layout-btn")].map((btn) => btn.dataset.layout).join(","),
       old: !!document.querySelector('[data-layout="1"]'),
       active: document.querySelector(".layout-btn.active").dataset.layout,
       before,
@@ -236,10 +230,9 @@ try {
       three
     };
     function measure() {
-      const left = document.querySelector('.slot[data-index="0"]').getBoundingClientRect();
-      const square = document.querySelector('.slot[data-index="1"]').getBoundingClientRect();
-      const empty = document.getElementById("voidCell").getBoundingClientRect();
-      return { aw: left.width, ah: left.height, bw: square.width, bh: square.height, vw: empty.width, vh: empty.height };
+      const sq = document.querySelector('.slot[data-index="1"]').getBoundingClientRect();
+      const stem = parseFloat(getComputedStyle(frame).getPropertyValue("--ls-left"));
+      return { bw: sq.width, bh: sq.height, lw: stem };
     }
     function seamDrag(el, dx, dy, id) {
       const r = el.getBoundingClientRect();
@@ -258,27 +251,20 @@ try {
   });
   assert(lsGeom.first === "ls" && !lsGeom.old, "first picker slot is the L layout, single full-frame is gone");
   assert(lsGeom.order === "ls,2v,3v,4v,5v,2h,3l,3t,4", "other layouts stay in place " + lsGeom.order);
-  assert(lsGeom.areas.replace(/"/g, "") === "a . a b", "ls grid areas " + lsGeom.areas);
-  assert(lsGeom.hidden === 3, "L layout shows two photo cells, hidden " + lsGeom.hidden);
+  assert(lsGeom.hidden === 3 && lsGeom.noVoid, "L layout is two photo cells");
   assert(!lsGeom.resetDisabled, "reset sizes stays available");
-  assert(!lsGeom.voidHidden && !lsGeom.voidSlot && lsGeom.voidText === "", "top-right is an empty region, not a photo cell");
-  assert(lsGeom.a.t < 0.08 && lsGeom.a.b > 0.9 && lsGeom.a.l < 0.08, "L photo fills the left side");
-  assert(lsGeom.a.r < 0.62 && lsGeom.a.r > 0.4, "L photo stops at the right column");
-  assert(lsGeom.v.l > lsGeom.a.r - 0.02 && lsGeom.v.t < 0.08 && lsGeom.v.r > 0.9 && lsGeom.v.b < 0.6, "empty region is the top-right " + JSON.stringify(lsGeom.v));
-  assert(lsGeom.b.l > 0.4 && lsGeom.b.t > 0.4 && lsGeom.b.r > 0.9 && lsGeom.b.b > 0.9, "square is the bottom-right " + JSON.stringify(lsGeom.b));
-  assert(lsGeom.v.b < lsGeom.b.t, "empty region sits above the square");
-  near(lsGeom.v.l, lsGeom.b.l, 0.02, "empty region and square share the right column");
+  assert(lsGeom.clip, "L photo is one clipped cell");
+  assert(lsGeom.hits.topRight === "0" && lsGeom.hits.bottomLeft === "0", "top-right and bottom-left are the L photo " + JSON.stringify(lsGeom.hits));
+  assert(lsGeom.hits.bottomRight === "1", "bottom-right is the square photo");
+  assert(lsGeom.b.l > 0.4 && lsGeom.b.t > 0.4 && lsGeom.b.r > 0.9 && lsGeom.b.b > 0.9, "square sits in the bottom-right " + JSON.stringify(lsGeom.b));
   assert(lsGeom.seam.hLeft > 0.4 && lsGeom.seam.hRight > 0.9, "horizontal handle stays on the right column");
-  assert(lsGeom.seam.vTop < 0.08 && lsGeom.seam.vBottom > 0.9, "vertical handle runs the full height");
-  assert(lsGeom.afterV.aw > lsGeom.before.aw + 30, "vertical drag widens the L");
+  assert(lsGeom.seam.vTop > 0.35 && lsGeom.seam.vBottom > 0.9, "vertical handle stays beside the square " + JSON.stringify(lsGeom.seam));
+  assert(lsGeom.afterV.lw > lsGeom.before.lw + 30, "vertical drag widens the L stem");
   assert(lsGeom.afterV.bw < lsGeom.before.bw - 30, "vertical drag narrows the square");
-  near(lsGeom.afterV.vw, lsGeom.afterV.bw, 2, "empty region stays as wide as the square");
-  near(lsGeom.afterV.ah, lsGeom.before.ah, 2, "vertical drag keeps the L full height");
   assert(lsGeom.afterH.bh > lsGeom.before.bh + 20, "horizontal drag grows the square");
-  assert(lsGeom.afterH.vh < lsGeom.before.vh - 20, "horizontal drag shrinks the empty region");
-  near(lsGeom.afterH.ah, lsGeom.before.ah, 2, "horizontal drag keeps the L full height");
-  assert(lsGeom.three.count === 3 && lsGeom.three.voidHidden, "large-left layout still has three photo cells");
-  assert(lsGeom.three.areas.indexOf(".") === -1, "large-left layout has no empty cell");
+  near(lsGeom.afterH.lw, lsGeom.before.lw, 2, "horizontal drag keeps the column split");
+  assert(lsGeom.three.count === 3, "large-left layout still has three photo cells");
+  assert(lsGeom.three.areas.replace(/"/g, "") === "a b a c", "large-left areas unchanged " + lsGeom.three.areas);
   assert(lsGeom.active === "2v", "restored the side-by-side layout");
 
   await page.evaluate(() => window.__collage.applyLayout("2v"));
@@ -829,65 +815,82 @@ try {
 
   await page.setViewport({ width: 1100, height: 900, deviceScaleFactor: 1, hasTouch: true, isMobile: false });
   await settleScroll(page);
-  const lsExport = await page.evaluate(async (redUrl, blueUrl) => {
+  const quad = await paint(page, (ctx, w, h) => {
+    ctx.fillStyle = "#e11d48";
+    ctx.fillRect(0, 0, w / 2, h / 2);
+    ctx.fillStyle = "#16a34a";
+    ctx.fillRect(w / 2, 0, w / 2, h / 2);
+    ctx.fillStyle = "#2563eb";
+    ctx.fillRect(0, h / 2, w / 2, h / 2);
+    ctx.fillStyle = "#facc15";
+    ctx.fillRect(w / 2, h / 2, w / 2, h / 2);
+  }, 800, 800);
+  const purple = await paint(page, (ctx, w, h) => {
+    ctx.fillStyle = "#7c3aed";
+    ctx.fillRect(0, 0, w, h);
+  }, 240, 240);
+  const lsExport = await page.evaluate(async (redUrl, purpleUrl, quadUrl) => {
     window.__collage.applyLayout("ls");
     window.__collage.resetCells();
     document.getElementById("resetBorderBtn").click();
-    document.querySelector('[data-shape="shape-portrait"]').click();
+    document.querySelector('[data-shape="shape-square"]').click();
     await window.__collage.loadDataURL(0, redUrl);
-    await window.__collage.loadDataURL(1, blueUrl);
+    await window.__collage.loadDataURL(1, purpleUrl);
     const slot = document.querySelector('.slot[data-index="0"]');
     const input = slot.querySelector('[data-action="zoom"]');
     input.value = "160";
     input.dispatchEvent(new Event("input", { bubbles: true }));
     const r = slot.getBoundingClientRect();
+    const px = r.left + r.width * 0.3;
+    const py = r.top + r.height * 0.2;
     slot.dispatchEvent(new WheelEvent("wheel", {
-      bubbles: true, cancelable: true, deltaY: -80,
-      clientX: r.left + r.width * 0.4,
-      clientY: r.top + r.height * 0.45
+      bubbles: true, cancelable: true, deltaY: -80, clientX: px, clientY: py
     }));
-    const x = r.left + r.width / 2;
-    const y = r.top + r.height / 2;
     slot.dispatchEvent(new PointerEvent("pointerdown", {
-      bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: 81, pointerType: "mouse", button: 0
+      bubbles: true, cancelable: true, clientX: px, clientY: py, pointerId: 81, pointerType: "mouse", button: 0
     }));
     document.dispatchEvent(new PointerEvent("pointermove", {
-      bubbles: true, cancelable: true, clientX: x - 50, clientY: y + 10, pointerId: 81, pointerType: "mouse"
+      bubbles: true, cancelable: true, clientX: px - 50, clientY: py, pointerId: 81, pointerType: "mouse"
     }));
     document.dispatchEvent(new PointerEvent("pointerup", {
-      bubbles: true, cancelable: true, clientX: x - 50, clientY: y + 10, pointerId: 81, pointerType: "mouse"
+      bubbles: true, cancelable: true, clientX: px - 50, clientY: py, pointerId: 81, pointerType: "mouse"
     }));
     const placed = window.__collage.placementFor(0);
+    const gesture = {
+      zoom: window.__collage.slots[0].zoom,
+      panX: window.__collage.slots[0].panX,
+      covers: placed.bgW >= placed.cw - 0.5 && placed.bgH >= placed.ch - 0.5
+    };
+    await window.__collage.loadDataURL(0, quadUrl);
+    window.__collage.slots[0].zoom = 1;
+    window.__collage.slots[0].panX = 0.5;
+    window.__collage.slots[0].panY = 0.5;
+    window.__collage.renderAll();
     const frame = document.getElementById("frame");
     const fr = frame.getBoundingClientRect();
     const canvas = window.__collage.exportCollage();
     const ctx = canvas.getContext("2d");
-    function sample(el) {
-      const box = el.getBoundingClientRect();
-      const sx = Math.round((box.left - fr.left + box.width * 0.5) * (canvas.width / fr.width));
-      const sy = Math.round((box.top - fr.top + box.height * 0.5) * (canvas.height / fr.height));
-      const px = ctx.getImageData(Math.max(0, sx), Math.max(0, sy), 1, 1).data;
+    function sample(xRatio, yRatio) {
+      const sx = Math.round(fr.width * xRatio * (canvas.width / fr.width));
+      const sy = Math.round(fr.height * yRatio * (canvas.height / fr.height));
+      const px = ctx.getImageData(Math.max(0, Math.min(canvas.width - 1, sx)), Math.max(0, Math.min(canvas.height - 1, sy)), 1, 1).data;
       return [px[0], px[1], px[2]];
     }
-    const voidEl = document.getElementById("voidCell");
-    const bg = getComputedStyle(voidEl).backgroundColor.match(/\d+/g).map(Number);
     return {
-      zoom: window.__collage.slots[0].zoom,
-      panX: window.__collage.slots[0].panX,
-      covers: placed.bgW >= placed.cw - 0.5 && placed.bgH >= placed.ch - 0.5,
-      left: sample(document.querySelector('.slot[data-index="0"]')),
-      square: sample(document.querySelector('.slot[data-index="1"]')),
-      empty: sample(voidEl),
-      voidBg: bg.slice(0, 3)
+      gesture,
+      topLeft: sample(0.25, 0.25),
+      topRight: sample(0.75, 0.22),
+      bottomLeft: sample(0.22, 0.75),
+      square: sample(0.75, 0.78)
     };
-  }, red, blue);
-  assert(lsExport.zoom > 1.6 && lsExport.zoom <= 3, "L photo still zooms, got " + lsExport.zoom);
-  assert(lsExport.panX > 0.5, "L photo still pans, panX " + lsExport.panX);
-  assert(lsExport.covers, "zoomed L photo still covers the cell");
-  assert(colorNear(lsExport.left, [225, 29, 72], 24), "export L cell shows its photo " + lsExport.left);
-  assert(colorNear(lsExport.square, [37, 99, 235], 24), "export square shows its photo " + lsExport.square);
-  assert(colorNear(lsExport.empty, lsExport.voidBg, 4), "export empty corner matches the screen " + lsExport.empty + " vs " + lsExport.voidBg);
-  assert(!colorNear(lsExport.empty, [194, 29, 46], 30), "empty corner is not the border color");
+  }, red, purple, quad);
+  assert(lsExport.gesture.zoom > 1.6 && lsExport.gesture.zoom <= 3, "L photo still zooms, got " + lsExport.gesture.zoom);
+  assert(lsExport.gesture.panX > 0.5, "L photo still pans, panX " + lsExport.gesture.panX);
+  assert(lsExport.gesture.covers, "zoomed L photo still covers its cell");
+  assert(colorNear(lsExport.topLeft, [225, 29, 72], 24), "export top-left of the L shows that photo " + lsExport.topLeft);
+  assert(colorNear(lsExport.topRight, [22, 163, 74], 24), "export top-right is part of the L photo " + lsExport.topRight);
+  assert(colorNear(lsExport.bottomLeft, [37, 99, 235], 24), "export bottom-left is part of the L photo " + lsExport.bottomLeft);
+  assert(colorNear(lsExport.square, [124, 58, 237], 24), "export square shows its own photo " + lsExport.square);
 
   await page.evaluate(async (redUrl, blueUrl, bandsUrl) => {
     window.__collage.applyLayout("4");
