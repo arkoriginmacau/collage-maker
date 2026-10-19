@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="app-version" content="1.3.1">
+<meta name="app-version" content="1.3.3">
 <title>Photo Collage Maker</title>
 <style>
   :root{
@@ -604,7 +604,7 @@
     </div>
   </div>
 
-  <footer class="site-footer">Photo Collage Maker <span data-version-slot>v1.3.1</span></footer>
+  <footer class="site-footer">Photo Collage Maker <span data-version-slot>v1.3.3</span></footer>
 
 <script>
 (function(){
@@ -686,8 +686,10 @@
     return splitState[key];
   }
 
-  function placement(cw, ch, iw, ih, zoom, panX, panY){
-    var cover = Math.max(cw / iw, ch / ih);
+  function placement(cw, ch, iw, ih, zoom, panX, panY, scaleW, scaleH){
+    if (!(scaleW > 0)) scaleW = cw;
+    if (!(scaleH > 0)) scaleH = ch;
+    var cover = Math.max(scaleW / iw, scaleH / ih);
     var total = cover * zoom;
     var bgW = iw * total;
     var bgH = ih * total;
@@ -705,7 +707,26 @@
     };
   }
 
+  // Size shares one cover across every visible cell: the largest cell's
+  // width and height. Equal cells keep their own cover. A smaller cell
+  // uses that same magnification instead of shrinking the photo to fit.
+  function scaleBox(){
+    var maxW = 0;
+    var maxH = 0;
+    var i, el, w, h;
+    for (i = 0; i < slots.length; i++){
+      el = slots[i].el;
+      if (el.classList.contains("hidden")) continue;
+      w = el.clientWidth;
+      h = el.clientHeight;
+      if (w > maxW) maxW = w;
+      if (h > maxH) maxH = h;
+    }
+    return { w: maxW, h: maxH };
+  }
+
   function placementFor(slot){
+    var box = scaleBox();
     return placement(
       slot.el.clientWidth,
       slot.el.clientHeight,
@@ -713,7 +734,9 @@
       slot.img.naturalHeight,
       slot.zoom,
       slot.panX,
-      slot.panY
+      slot.panY,
+      box.w,
+      box.h
     );
   }
 
@@ -752,7 +775,8 @@
     var iw = slot.img.naturalWidth;
     var ih = slot.img.naturalHeight;
     if (cw < 1 || ch < 1 || !iw || !ih) return;
-    var cover = Math.max(cw / iw, ch / ih);
+    var box = scaleBox();
+    var cover = Math.max(box.w / iw, box.h / ih);
     newZoom = clamp(newZoom, MIN_ZOOM, MAX_ZOOM);
     var oldTotal = cover * oldZoom;
     if (oldTotal <= 0) return;
@@ -1755,6 +1779,16 @@
     ctx.fillStyle = borderColor || "#c21d2e";
     ctx.fillRect(0, 0, EXPORT_W, EXPORT_H);
 
+    var exportScale = { w: 0, h: 0 };
+    slots.forEach(function(slot){
+      if (slot.el.classList.contains("hidden")) return;
+      var box = slot.el.getBoundingClientRect();
+      var bw = box.width * scaleFactor;
+      var bh = box.height * scaleFactor;
+      if (bw > exportScale.w) exportScale.w = bw;
+      if (bh > exportScale.h) exportScale.h = bh;
+    });
+
     slots.forEach(function(slot, index){
       if (slot.el.classList.contains("hidden") || !slot.img) return;
       var r = slot.el.getBoundingClientRect();
@@ -1765,7 +1799,7 @@
       var iw = slot.img.naturalWidth;
       var ih = slot.img.naturalHeight;
       if (!iw || !ih || dw < 1 || dh < 1) return;
-      var m = placement(dw, dh, iw, ih, slot.zoom, slot.panX, slot.panY);
+      var m = placement(dw, dh, iw, ih, slot.zoom, slot.panX, slot.panY, exportScale.w, exportScale.h);
       var sx = -m.ox / m.total;
       var sy = -m.oy / m.total;
       var sw = dw / m.total;
