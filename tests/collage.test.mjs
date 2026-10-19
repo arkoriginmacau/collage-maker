@@ -1031,14 +1031,52 @@ try {
     }
     const same = snap(2, 2);
     const punched = snap(1, 3);
+    for (let i = 0; i < 5; i++) await window.__collage.loadDataURL(i, photoUrl);
+    const layouts = {};
+    ["ls", "2v", "2h", "3v", "4v", "5v", "3l", "3t", "4"].forEach((key) => {
+      window.__collage.applyLayout(key);
+      window.__collage.resetCells();
+      const visible = window.__collage.slots.filter((slot) => !slot.el.classList.contains("hidden"));
+      visible.forEach((slot) => {
+        slot.zoom = 2;
+        slot.panX = 0.5;
+        slot.panY = 0.5;
+      });
+      window.__collage.renderAll();
+      const placed = visible.map((slot) => window.__collage.placementFor(window.__collage.slots.indexOf(slot)));
+      layouts[key] = {
+        totals: placed.map((m) => m.total),
+        covers: placed.every((m) => m.bgW >= m.cw - 0.5 && m.bgH >= m.ch - 0.5)
+      };
+    });
     window.__collage.applyLayout("2v");
     window.__collage.resetCells();
     window.__collage.slots[0].zoom = 2;
     window.__collage.slots[1].zoom = 2;
     window.__collage.renderAll();
-    const half = {
+    const even = window.__collage.placementFor(0);
+    const own = Math.max(even.cw / even.iw, even.ch / even.ih) * 2;
+    const seam = document.querySelector(".seam-v");
+    const r = seam.getBoundingClientRect();
+    const x = r.left + r.width / 2;
+    const y = r.top + r.height / 2;
+    seam.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: 91, pointerType: "mouse", button: 0
+    }));
+    document.dispatchEvent(new PointerEvent("pointermove", {
+      bubbles: true, cancelable: true, clientX: x + 80, clientY: y, pointerId: 91, pointerType: "mouse"
+    }));
+    document.dispatchEvent(new PointerEvent("pointerup", {
+      bubbles: true, cancelable: true, clientX: x + 80, clientY: y, pointerId: 91, pointerType: "mouse"
+    }));
+    window.__collage.slots[0].zoom = 2;
+    window.__collage.slots[1].zoom = 2;
+    window.__collage.renderAll();
+    const uneven = {
       a: window.__collage.placementFor(0).total,
-      b: window.__collage.placementFor(1).total
+      b: window.__collage.placementFor(1).total,
+      aw: window.__collage.placementFor(0).cw,
+      bw: window.__collage.placementFor(1).cw
     };
     window.__collage.slots.forEach((slot) => {
       slot.img = null;
@@ -1047,15 +1085,25 @@ try {
       slot.panX = 0.5;
       slot.panY = 0.5;
     });
+    window.__collage.resetCells();
     window.__collage.renderAll();
     window.__collage.applyLayout("2v");
-    return { same, punched, half };
+    return { same, punched, layouts, own, even: even.total, uneven };
   }, portrait);
   near(uniformZoom.same.sq, uniformZoom.same.l, uniformZoom.same.l * 0.02, "equal Size uses the same photo scale on the L and the square");
   assert(uniformZoom.same.covers, "square photo still covers the small cell");
   assert(uniformZoom.same.seen < 0.7, "square shows a tighter crop than a shrunk full photo, seen " + uniformZoom.same.seen);
   assert(uniformZoom.punched.sq > uniformZoom.punched.l * 2.8, "max Size on the square punches in much further than the L at 100% (" + uniformZoom.punched.sq + " vs " + uniformZoom.punched.l + ")");
-  near(uniformZoom.half.a, uniformZoom.half.b, uniformZoom.half.a * 0.02, "half-half cells keep their own matching scale");
+  near(uniformZoom.even, uniformZoom.own, uniformZoom.own * 0.02, "equal half-half cells still cover-fit themselves");
+  assert(Math.abs(uniformZoom.uneven.aw - uniformZoom.uneven.bw) > 40, "seam drag made the half-half cells unequal");
+  near(uniformZoom.uneven.a, uniformZoom.uneven.b, uniformZoom.uneven.a * 0.02, "unequal cells keep the same Size scale");
+  Object.keys(uniformZoom.layouts).forEach((key) => {
+    const row = uniformZoom.layouts[key];
+    const hi = Math.max(...row.totals);
+    const lo = Math.min(...row.totals);
+    assert(row.covers, key + " photos still cover their cells");
+    near(lo, hi, hi * 0.02, key + " cells share one Size scale " + row.totals.join(","));
+  });
   assert(colorNear(uniformZoom.same.exportCenter, [253, 186, 116], 12), "exported square uses the same centered crop " + uniformZoom.same.exportCenter);
 
   await page.evaluate(async (redUrl, blueUrl, bandsUrl) => {
