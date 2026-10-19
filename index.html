@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="app-version" content="1.3.4">
+<meta name="app-version" content="1.3.5">
 <title>Photo Collage Maker</title>
 <style>
   :root{
@@ -63,24 +63,22 @@
   }
   .frame-wrap{
     display:flex;
-    align-items:stretch;
-    justify-content:center;
-    gap:10px;
+    flex-direction:column;
+    align-items:center;
+    gap:12px;
   }
   .frame-shell{
     position:relative;
-    flex:1 1 auto;
-    width:auto;
+    width:100%;
     max-width:420px;
     min-width:0;
   }
   .size-rail{
-    flex:0 0 96px;
+    width:100%;
+    max-width:420px;
     display:flex;
     flex-direction:column;
-    justify-content:center;
     gap:8px;
-    min-width:0;
   }
   .size-rail:not(:has(.zoom-bar.is-active)){ display:none; }
   .size-rail-label{
@@ -605,7 +603,7 @@
     </div>
   </div>
 
-  <footer class="site-footer">Photo Collage Maker <span data-version-slot>v1.3.4</span></footer>
+  <footer class="site-footer">Photo Collage Maker <span data-version-slot>v1.3.5</span></footer>
 
 <script>
 (function(){

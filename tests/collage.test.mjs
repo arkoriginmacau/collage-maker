@@ -507,13 +507,14 @@ try {
         const input = bar.querySelector("input");
         return {
           h: r.height,
-          beside: r.left >= fr.right - 1,
-          clear: r.left >= fr.right - 1 || r.right <= fr.left + 1 || r.bottom <= fr.top + 1 || r.top >= fr.bottom - 1,
+          w: r.width,
+          below: r.top >= fr.bottom - 1,
+          clear: r.top >= fr.bottom - 1,
           inFrame: frame.contains(bar),
           slot: input.getAttribute("data-slot")
         };
       });
-      out[key] = { count: bars.length, filled: filled.length, bars };
+      out[key] = { count: bars.length, filled: filled.length, frameW: fr.width, bars };
     });
     window.__collage.applyLayout("2v");
     window.__collage.renderAll();
@@ -523,9 +524,10 @@ try {
     const row = outside[key];
     assert(row.count === row.filled && row.count > 0, key + " shows a Size control for each filled cell " + JSON.stringify(row));
     row.bars.forEach((bar) => {
-      assert(bar.beside && bar.clear, key + " Size control stays beside the collage " + JSON.stringify(bar));
+      assert(bar.below && bar.clear, key + " Size control stays below the collage " + JSON.stringify(bar));
       assert(!bar.inFrame, key + " Size control is outside the frame");
       assert(bar.h >= 40, key + " Size control is touch-sized, height " + bar.h);
+      assert(bar.w >= row.frameW * 0.8, key + " Size control uses the width under the frame, got " + bar.w);
     });
   });
 
