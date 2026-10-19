@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="app-version" content="1.2.1">
+<meta name="app-version" content="1.3.0">
 <title>Photo Collage Maker</title>
 <style>
   :root{
@@ -88,7 +88,11 @@
   .frame.shape-portrait{ aspect-ratio:3/4; }
   .frame.shape-landscape{ aspect-ratio:4/3; }
 
-  .frame.layout-1{ grid-template-columns:1fr; grid-template-areas:"a"; }
+  .frame.layout-ls{
+    grid-template-columns:1fr 1fr;
+    grid-template-rows:1fr 1fr;
+    grid-template-areas:"a ." "a b";
+  }
   .frame.layout-2v{ grid-template-columns:1fr 1fr; grid-template-areas:"a b"; }
   .frame.layout-2h{ grid-template-columns:1fr; grid-template-rows:1fr 1fr; grid-template-areas:"a" "b"; }
   .frame.layout-3l{ grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; grid-template-areas:"a b" "a c"; }
@@ -112,6 +116,13 @@
     -webkit-touch-callout:none;
   }
   .slot.hidden{ display:none; }
+  .void{
+    background:#b0b0b8;
+    min-width:0;
+    min-height:0;
+    pointer-events:none;
+  }
+  .void[hidden]{ display:none; }
   .slot .empty-hint{
     position:absolute;
     inset:0;
@@ -277,7 +288,18 @@
   .mini > div{ background:#8b8b96; border-radius:1px; }
   .layout-btn.active .mini{ background:var(--accent); }
   .layout-btn.active .mini > div{ background:#d9c6ff; }
-  .mini.layout-1{ grid-template-columns:1fr; grid-template-areas:"a"; }
+  .mini.layout-ls{
+    grid-template-columns:1fr 1fr;
+    grid-template-rows:1fr 1fr;
+    grid-template-areas:"a ." "a b";
+  }
+  .mini-blank{
+    grid-column:2;
+    grid-row:1;
+    background:#e6e6eb;
+    border-radius:1px;
+  }
+  .layout-btn.active .mini > div.mini-blank{ background:#f3f3f6; }
   .mini.layout-2v{ grid-template-columns:1fr 1fr; grid-template-areas:"a b"; }
   .mini.layout-2h{ grid-template-columns:1fr; grid-template-rows:1fr 1fr; grid-template-areas:"a" "b"; }
   .mini.layout-3l{ grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; grid-template-areas:"a b" "a c"; }
@@ -454,6 +476,7 @@
               </div>
               <input type="file" accept="image/*" data-action="file">
             </div>
+            <div class="void" id="voidCell" hidden aria-hidden="true"></div>
           </div>
           <div class="handles" id="handles"></div>
         </div>
@@ -465,7 +488,7 @@
       <div>
         <span class="field-label">Layout</span>
         <div class="layout-grid">
-          <button class="layout-btn" data-layout="1" title="1 photo"><div class="mini layout-1"><div style="grid-area:a"></div></div></button>
+          <button class="layout-btn" data-layout="ls" title="L and bottom-right square"><div class="mini layout-ls"><div style="grid-area:a"></div><div class="mini-blank"></div><div style="grid-area:b"></div></div></button>
           <button class="layout-btn active" data-layout="2v" title="2 side by side"><div class="mini layout-2v"><div style="grid-area:a"></div><div style="grid-area:b"></div></div></button>
           <button class="layout-btn" data-layout="3v" title="3 vertical rows"><div class="mini layout-3v"><div style="grid-area:a"></div><div style="grid-area:b"></div><div style="grid-area:c"></div></div></button>
           <button class="layout-btn" data-layout="4v" title="4 vertical rows"><div class="mini layout-4v"><div style="grid-area:a"></div><div style="grid-area:b"></div><div style="grid-area:c"></div><div style="grid-area:d"></div></div></button>
@@ -514,14 +537,14 @@
     </div>
   </div>
 
-  <footer class="site-footer">Photo Collage Maker <span data-version-slot>v1.2.1</span></footer>
+  <footer class="site-footer">Photo Collage Maker <span data-version-slot>v1.3.0</span></footer>
 
 <script>
 (function(){
   "use strict";
 
   var LAYOUTS = {
-    "1":  { areas: [["a"]] },
+    "ls": { areas: [["a", "."], ["a", "b"]] },
     "2v": { areas: [["a", "b"]] },
     "2h": { areas: [["a"], ["b"]] },
     "3v": { areas: [["a", "b", "c"]] },
@@ -547,6 +570,7 @@
   } catch (e) {}
 
   var frame = document.getElementById("frame");
+  var voidEl = document.getElementById("voidCell");
   var handlesEl = document.getElementById("handles");
   var slotEls = Array.prototype.slice.call(document.querySelectorAll(".slot"));
   var currentLayout = "2v";
@@ -694,10 +718,9 @@
     for (var r = 0; r < spec.rows; r++){
       for (var c = 0; c < spec.cols; c++){
         var name = spec.areas[r][c];
-        if (!seen[name]){
-          seen[name] = true;
-          list.push(name);
-        }
+        if (name === "." || seen[name]) continue;
+        seen[name] = true;
+        list.push(name);
       }
     }
     return list;
@@ -788,6 +811,11 @@
     return slots[AREA_INDEX[name]];
   }
 
+  function regionRect(name){
+    if (name === ".") return voidEl.getBoundingClientRect();
+    return areaSlot(name).el.getBoundingClientRect();
+  }
+
   function placeSeam(el, seam){
     var spec = specOf(currentLayout);
     var origin = handlesEl.getBoundingClientRect();
@@ -804,8 +832,8 @@
 
     if (seam.axis === "v"){
       for (var r = seam.start; r < seam.end; r++){
-        var a = areaSlot(spec.areas[r][seam.index]).el.getBoundingClientRect();
-        var b = areaSlot(spec.areas[r][seam.index + 1]).el.getBoundingClientRect();
+        var a = regionRect(spec.areas[r][seam.index]);
+        var b = regionRect(spec.areas[r][seam.index + 1]);
         top = Math.min(top, a.top, b.top);
         bottom = Math.max(bottom, a.bottom, b.bottom);
         if (r === seam.start){
@@ -831,8 +859,8 @@
       }
     } else {
       for (var c = seam.start; c < seam.end; c++){
-        var above = areaSlot(spec.areas[seam.index][c]).el.getBoundingClientRect();
-        var below = areaSlot(spec.areas[seam.index + 1][c]).el.getBoundingClientRect();
+        var above = regionRect(spec.areas[seam.index][c]);
+        var below = regionRect(spec.areas[seam.index + 1][c]);
         left = Math.min(left, above.left, below.left);
         right = Math.max(right, above.right, below.right);
         if (c === seam.start){
@@ -883,12 +911,12 @@
   function pairPixels(seam){
     var spec = specOf(currentLayout);
     if (seam.axis === "v"){
-      var left = areaSlot(spec.areas[seam.start][seam.index]).el.getBoundingClientRect();
-      var right = areaSlot(spec.areas[seam.start][seam.index + 1]).el.getBoundingClientRect();
+      var left = regionRect(spec.areas[seam.start][seam.index]);
+      var right = regionRect(spec.areas[seam.start][seam.index + 1]);
       return { startPx: left.width, nextPx: right.width };
     }
-    var above = areaSlot(spec.areas[seam.index][seam.start]).el.getBoundingClientRect();
-    var below = areaSlot(spec.areas[seam.index + 1][seam.start]).el.getBoundingClientRect();
+    var above = regionRect(spec.areas[seam.index][seam.start]);
+    var below = regionRect(spec.areas[seam.index + 1][seam.start]);
     return { startPx: above.height, nextPx: below.height };
   }
 
@@ -1038,6 +1066,19 @@
         slot.el.classList.add("hidden");
       }
     });
+    var blank = null;
+    for (var br = 0; br < spec.rows; br++){
+      for (var bc = 0; bc < spec.cols; bc++){
+        if (spec.areas[br][bc] === ".") blank = { row: br + 1, col: bc + 1 };
+      }
+    }
+    if (blank){
+      voidEl.hidden = false;
+      voidEl.style.gridRow = String(blank.row);
+      voidEl.style.gridColumn = String(blank.col);
+    } else {
+      voidEl.hidden = true;
+    }
     document.querySelectorAll(".layout-btn").forEach(function(btn){
       btn.classList.toggle("active", btn.dataset.layout === key);
     });
@@ -1466,6 +1507,17 @@
     var borderColor = getComputedStyle(document.documentElement).getPropertyValue("--border-color").trim();
     ctx.fillStyle = borderColor || "#c21d2e";
     ctx.fillRect(0, 0, EXPORT_W, EXPORT_H);
+
+    if (!voidEl.hidden){
+      var vr = voidEl.getBoundingClientRect();
+      ctx.fillStyle = getComputedStyle(voidEl).backgroundColor;
+      ctx.fillRect(
+        (vr.left - frameRect.left) * scaleFactor,
+        (vr.top - frameRect.top) * scaleFactor,
+        vr.width * scaleFactor,
+        vr.height * scaleFactor
+      );
+    }
 
     slots.forEach(function(slot){
       if (slot.el.classList.contains("hidden") || !slot.img) return;
