@@ -267,6 +267,105 @@ try {
   assert(lsGeom.three.areas.replace(/"/g, "") === "a b a c", "large-left areas unchanged " + lsGeom.three.areas);
   assert(lsGeom.active === "2v", "restored the side-by-side layout");
 
+  await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  const splitBar = await page.evaluate(() => {
+    window.__collage.applyLayout("2v");
+    const hiddenOn2v = document.getElementById("splitResize").hidden;
+    window.__collage.applyLayout("ls");
+    window.__collage.resetCells();
+    const bar = document.getElementById("splitResize");
+    const track = document.getElementById("splitTrack");
+    const frame = document.getElementById("frame");
+    const fr = frame.getBoundingClientRect();
+    const br = bar.getBoundingClientRect();
+    const tr = track.getBoundingClientRect();
+    const sq = document.querySelector('.slot[data-index="1"]').getBoundingClientRect();
+    const thumb = document.getElementById("splitThumb").getBoundingClientRect();
+    return {
+      hiddenOn2v,
+      hidden: bar.hidden,
+      below: br.top >= fr.bottom - 2,
+      trackH: tr.height,
+      label: bar.querySelector(".split-label").textContent,
+      thumbInside: thumb.left >= tr.left - 1 && thumb.right <= tr.right + 1,
+      startW: sq.width / fr.width,
+      startH: sq.height / fr.height,
+      hint: document.querySelector(".hint-text").textContent
+    };
+  });
+  assert(splitBar.hiddenOn2v, "square size bar stays hidden on other layouts");
+  assert(!splitBar.hidden, "square size bar shows on the L layout");
+  assert(splitBar.below, "square size bar sits under the collage");
+  assert(splitBar.trackH >= 48, "square size bar is finger-sized, height " + splitBar.trackH);
+  assert(splitBar.label === "Square size", "bar is labeled for the square split");
+  assert(splitBar.thumbInside, "thumb stays inside the track");
+  assert(splitBar.hint.indexOf("Square size") !== -1, "help text under the collage points at the bar");
+  assert(splitBar.startW < 0.6 && splitBar.startH < 0.6, "square starts near half the frame");
+
+  const grown = await page.evaluate(() => {
+    const track = document.getElementById("splitTrack");
+    const rect = track.getBoundingClientRect();
+    const y = rect.top + rect.height / 2;
+    track.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true, cancelable: true, clientX: rect.left + rect.width / 2, clientY: y, pointerId: 81, pointerType: "touch", button: 0
+    }));
+    track.dispatchEvent(new PointerEvent("pointermove", {
+      bubbles: true, cancelable: true, clientX: rect.right, clientY: y, pointerId: 81, pointerType: "touch"
+    }));
+    track.dispatchEvent(new PointerEvent("pointerup", {
+      bubbles: true, cancelable: true, clientX: rect.right, clientY: y, pointerId: 81, pointerType: "touch"
+    }));
+    const frame = document.getElementById("frame").getBoundingClientRect();
+    const sq = document.querySelector('.slot[data-index="1"]').getBoundingClientRect();
+    const thumb = document.getElementById("splitThumb").getBoundingClientRect();
+    const tr = track.getBoundingClientRect();
+    return {
+      w: sq.width / frame.width,
+      h: sq.height / frame.height,
+      thumbInside: thumb.left >= tr.left - 1 && thumb.right <= tr.right + 1,
+      overflow: document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1
+    };
+  });
+  assert(grown.w > 0.7, "dragging the bar right grows the square width, got " + grown.w);
+  assert(grown.h > 0.7, "dragging the bar right grows the square height, got " + grown.h);
+  assert(grown.thumbInside, "thumb stays inside the track at the large size");
+  assert(grown.overflow, "square size bar does not overflow the phone width");
+
+  const shrunk = await page.evaluate(() => {
+    const track = document.getElementById("splitTrack");
+    const rect = track.getBoundingClientRect();
+    const y = rect.top + rect.height / 2;
+    track.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true, cancelable: true, clientX: rect.right, clientY: y, pointerId: 82, pointerType: "touch", button: 0
+    }));
+    track.dispatchEvent(new PointerEvent("pointermove", {
+      bubbles: true, cancelable: true, clientX: rect.left, clientY: y, pointerId: 82, pointerType: "touch"
+    }));
+    track.dispatchEvent(new PointerEvent("pointerup", {
+      bubbles: true, cancelable: true, clientX: rect.left, clientY: y, pointerId: 82, pointerType: "touch"
+    }));
+    const frame = document.getElementById("frame").getBoundingClientRect();
+    const sq = document.querySelector('.slot[data-index="1"]').getBoundingClientRect();
+    return { w: sq.width / frame.width, h: sq.height / frame.height, px: sq.width };
+  });
+  assert(shrunk.w < 0.28 && shrunk.h < 0.28, "dragging the bar left shrinks the square " + JSON.stringify(shrunk));
+  assert(shrunk.px >= 36, "shrunk square keeps a minimum size, got " + shrunk.px);
+
+  await page.focus("#splitTrack");
+  const keyed = await page.evaluate(() => {
+    const before = document.querySelector('.slot[data-index="1"]').getBoundingClientRect().width;
+    document.getElementById("splitTrack").dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }));
+    const after = document.querySelector('.slot[data-index="1"]').getBoundingClientRect().width;
+    return { before, after };
+  });
+  assert(keyed.after > keyed.before + 4, "ArrowRight grows the square (" + keyed.before + " -> " + keyed.after + ")");
+
+  await page.setViewport({ width: 1100, height: 900, deviceScaleFactor: 1, isMobile: false, hasTouch: false });
+  await page.evaluate(() => {
+    window.__collage.applyLayout("2v");
+    window.__collage.resetCells();
+  });
+
   await page.evaluate(() => window.__collage.applyLayout("2v"));
   const before = await cellWidths(page);
   const seamBox = await page.$eval(".seam-v", (el) => {
