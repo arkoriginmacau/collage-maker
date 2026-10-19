@@ -505,16 +505,31 @@ try {
       const bars = [...document.querySelectorAll("#sizeRail .zoom-bar.is-active")].map((bar) => {
         const r = bar.getBoundingClientRect();
         const input = bar.querySelector("input");
+        const lock = bar.querySelector("[data-action='lock']");
+        const lr = lock.getBoundingClientRect();
         return {
           h: r.height,
           w: r.width,
           below: r.top >= fr.bottom - 1,
           clear: r.top >= fr.bottom - 1,
           inFrame: frame.contains(bar),
+          lockH: lr.height,
+          lockBelow: lr.top >= fr.bottom - 1,
           slot: input.getAttribute("data-slot")
         };
       });
-      out[key] = { count: bars.length, filled: filled.length, frameW: fr.width, bars };
+      const removes = [...document.querySelectorAll("#clearRow .remove-btn.is-active")].map((btn) => {
+        const r = btn.getBoundingClientRect();
+        return {
+          top: r.top,
+          bottom: r.bottom,
+          left: r.left,
+          h: r.height,
+          inFrame: frame.contains(btn),
+          slot: btn.getAttribute("data-slot")
+        };
+      }).sort((a, b) => a.left - b.left);
+      out[key] = { count: bars.length, filled: filled.length, frameW: fr.width, frameLeft: fr.left, frameTop: fr.top, bars, removes };
     });
     window.__collage.applyLayout("2v");
     window.__collage.renderAll();
@@ -528,8 +543,69 @@ try {
       assert(!bar.inFrame, key + " Size control is outside the frame");
       assert(bar.h >= 40, key + " Size control is touch-sized, height " + bar.h);
       assert(bar.w >= row.frameW * 0.8, key + " Size control uses the width under the frame, got " + bar.w);
+      assert(bar.lockBelow && bar.lockH >= 40, key + " lock stays under the frame " + JSON.stringify(bar));
+    });
+    assert(row.removes.length === row.filled, key + " shows a remove control per filled cell");
+    assert(Math.abs(row.removes[0].left - row.frameLeft) <= 4, key + " remove controls start at the frame's left");
+    row.removes.forEach((btn) => {
+      assert(btn.bottom <= row.frameTop + 1, key + " remove control sits above the frame " + JSON.stringify(btn));
+      assert(!btn.inFrame, key + " remove control is outside the frame");
+      assert(btn.h >= 40, key + " remove control is touch-sized, height " + btn.h);
     });
   });
+
+  const lockedView = await page.evaluate(() => {
+    const slot = window.__collage.slots[0];
+    slot.zoom = 1.5;
+    slot.panX = 0.2;
+    slot.panY = 0.3;
+    window.__collage.renderAll();
+    const btn = document.querySelector('#sizeRail [data-action="lock"][data-slot="0"]');
+    btn.click();
+    const input = document.querySelector('#sizeRail [data-action="zoom"][data-slot="0"]');
+    input.value = "300";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    const zoomAfterSlider = slot.zoom;
+    const el = slot.el;
+    const r = el.getBoundingClientRect();
+    el.dispatchEvent(new WheelEvent("wheel", {
+      bubbles: true, cancelable: true, deltaY: -120, clientX: r.left + 24, clientY: r.top + 24
+    }));
+    const zoomAfterWheel = slot.zoom;
+    el.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true, cancelable: true, clientX: r.left + 40, clientY: r.top + 40, pointerId: 91, pointerType: "mouse", button: 0
+    }));
+    document.dispatchEvent(new PointerEvent("pointermove", {
+      bubbles: true, cancelable: true, clientX: r.left - 30, clientY: r.top + 40, pointerId: 91, pointerType: "mouse"
+    }));
+    document.dispatchEvent(new PointerEvent("pointerup", {
+      bubbles: true, cancelable: true, clientX: r.left - 30, clientY: r.top + 40, pointerId: 91, pointerType: "mouse"
+    }));
+    const whileLocked = {
+      pressed: btn.getAttribute("aria-pressed") === "true",
+      label: btn.textContent,
+      disabled: input.disabled,
+      zoomAfterSlider,
+      zoomAfterWheel,
+      panX: slot.panX
+    };
+    btn.click();
+    input.value = "220";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    const unlockedZoom = slot.zoom;
+    slot.zoom = 1.8;
+    slot.panX = 0.5;
+    slot.panY = 0.5;
+    window.__collage.renderAll();
+    return { whileLocked, unlocked: !slot.locked && btn.getAttribute("aria-pressed") === "false", unlockedZoom };
+  });
+  assert(lockedView.whileLocked.pressed && lockedView.whileLocked.label === "Locked", "lock control shows the locked state");
+  assert(lockedView.whileLocked.disabled, "Size slider is disabled while the view is locked");
+  near(lockedView.whileLocked.zoomAfterSlider, 1.5, 0.001, "Size slider does not zoom a locked photo");
+  near(lockedView.whileLocked.zoomAfterWheel, 1.5, 0.001, "wheel does not zoom a locked photo");
+  near(lockedView.whileLocked.panX, 0.2, 0.001, "drag does not pan a locked photo");
+  assert(lockedView.unlocked, "lock toggles back off");
+  near(lockedView.unlockedZoom, 2.2, 0.001, "Size slider zooms again after unlock");
 
   const wheelZoom = await page.evaluate(() => {
     const slot = document.querySelector('.slot[data-index="0"]');
@@ -757,21 +833,21 @@ try {
   assert(screenMatch.meanInterior < 8, "export mean interior diff " + screenMatch.meanInterior);
 
   const controls = await page.evaluate(() => {
-    const remove = document.querySelector('.slot[data-index="1"] .remove-btn');
+    const remove = document.querySelector('#clearRow [data-action="remove"][data-slot="1"]');
     const rr = remove.getBoundingClientRect();
     const hit = document.elementFromPoint(rr.left + rr.width / 2, rr.top + rr.height / 2);
     const slider = document.querySelector('#sizeRail [data-action="zoom"][data-slot="1"]');
     const sr = slider.getBoundingClientRect();
     const sliderHit = document.elementFromPoint(sr.left + sr.width / 2, sr.top + sr.height / 2);
     return {
-      remove: hit === remove,
+      remove: hit === remove || remove.contains(hit),
       slider: sliderHit === slider || slider.contains(sliderHit)
     };
   });
-  assert(controls.remove, "remove button stays clickable above the handles");
+  assert(controls.remove, "remove button stays clickable outside the frame");
   assert(controls.slider, "size slider stays usable above the handles");
 
-  await page.click('.slot[data-index="1"] .remove-btn');
+  await page.click('#clearRow [data-action="remove"][data-slot="1"]');
   const removed = await page.evaluate(() => {
     const slot = window.__collage.slots[1];
     return !slot.img && !document.querySelector('.slot[data-index="1"]').classList.contains("filled");
