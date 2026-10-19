@@ -148,7 +148,7 @@ try {
   await page.setViewport({ width: 1100, height: 900, deviceScaleFactor: 1 });
 
   const seamPlan = await page.evaluate(() => {
-    const keys = ["1", "2v", "2h", "3v", "4v", "5v", "3l", "3t", "4"];
+    const keys = ["ls", "2v", "2h", "3v", "4v", "5v", "3l", "3t", "4"];
     const out = {};
     keys.forEach((key) => {
       window.__collage.applyLayout(key);
@@ -157,7 +157,7 @@ try {
     window.__collage.applyLayout("2v");
     return out;
   });
-  assert(seamPlan["1"].length === 0, "layout 1 has no seams");
+  assert(JSON.stringify(seamPlan["ls"]) === JSON.stringify(["v:0:1-2", "h:0:1-2"]), "ls seams " + seamPlan["ls"]);
   assert(JSON.stringify(seamPlan["2v"]) === JSON.stringify(["v:0:0-1"]), "2v seam " + seamPlan["2v"]);
   assert(JSON.stringify(seamPlan["2h"]) === JSON.stringify(["h:0:0-1"]), "2h seam " + seamPlan["2h"]);
   assert(seamPlan["3v"].length === 2 && seamPlan["3v"].every((s) => s.startsWith("v:")), "3v seams");
@@ -167,15 +167,105 @@ try {
   assert(JSON.stringify(seamPlan["3t"]) === JSON.stringify(["v:0:1-2", "h:0:0-2"]), "3t seams " + seamPlan["3t"]);
   assert(JSON.stringify(seamPlan["4"]) === JSON.stringify(["v:0:0-2", "h:0:0-2"]), "4 seams " + seamPlan["4"]);
 
-  const resetDisabledOnSingle = await page.evaluate(() => {
-    window.__collage.applyLayout("1");
-    const disabled = document.getElementById("resetCellsBtn").disabled;
-    const hidden = document.querySelectorAll(".slot.hidden").length;
+  const lsGeom = await page.evaluate(() => {
+    window.__collage.applyLayout("ls");
+    window.__collage.resetCells();
+    const frame = document.getElementById("frame");
+    const fr = frame.getBoundingClientRect();
+    const lSlot = document.querySelector('.slot[data-index="0"]');
+    const square = document.querySelector('.slot[data-index="1"]');
+    const b = square.getBoundingClientRect();
+    const h = document.querySelector(".seam-h").getBoundingClientRect();
+    const v = document.querySelector(".seam-v").getBoundingClientRect();
+    function slotIndexAt(xRatio, yRatio) {
+      const hit = document.elementFromPoint(fr.left + fr.width * xRatio, fr.top + fr.height * yRatio);
+      const slot = hit && hit.closest ? hit.closest(".slot") : null;
+      return slot ? slot.dataset.index : "";
+    }
+    const before = measure();
+    seamDrag(document.querySelector(".seam-v"), 50, 0, 71);
+    const afterV = measure();
+    window.__collage.resetCells();
+    seamDrag(document.querySelector(".seam-h"), 0, -36, 72);
+    const afterH = measure();
+    const snap = {
+      hidden: document.querySelectorAll(".slot.hidden").length,
+      resetDisabled: document.getElementById("resetCellsBtn").disabled,
+      noVoid: !document.getElementById("voidCell"),
+      clip: lSlot.style.clipPath.indexOf("polygon") === 0,
+      hits: {
+        topRight: slotIndexAt(0.75, 0.22),
+        bottomLeft: slotIndexAt(0.22, 0.75),
+        bottomRight: slotIndexAt(0.75, 0.78)
+      },
+      b: {
+        l: (b.left - fr.left) / fr.width,
+        t: (b.top - fr.top) / fr.height,
+        r: (b.right - fr.left) / fr.width,
+        b: (b.bottom - fr.top) / fr.height
+      },
+      seam: {
+        hLeft: (h.left - fr.left) / fr.width,
+        hRight: (h.right - fr.left) / fr.width,
+        vTop: (v.top - fr.top) / fr.height,
+        vBottom: (v.bottom - fr.top) / fr.height
+      }
+    };
+    window.__collage.resetCells();
+    window.__collage.applyLayout("3l");
+    const three = {
+      count: document.querySelectorAll(".slot:not(.hidden)").length,
+      areas: getComputedStyle(frame).gridTemplateAreas
+    };
     window.__collage.applyLayout("2v");
-    return { disabled, hidden };
+    return {
+      ...snap,
+      first: document.querySelector(".layout-btn").dataset.layout,
+      order: [...document.querySelectorAll(".layout-btn")].map((btn) => btn.dataset.layout).join(","),
+      old: !!document.querySelector('[data-layout="1"]'),
+      active: document.querySelector(".layout-btn.active").dataset.layout,
+      before,
+      afterV,
+      afterH,
+      three
+    };
+    function measure() {
+      const sq = document.querySelector('.slot[data-index="1"]').getBoundingClientRect();
+      const stem = parseFloat(getComputedStyle(frame).getPropertyValue("--ls-left"));
+      return { bw: sq.width, bh: sq.height, lw: stem };
+    }
+    function seamDrag(el, dx, dy, id) {
+      const r = el.getBoundingClientRect();
+      const x = r.left + r.width / 2;
+      const y = r.top + r.height / 2;
+      el.dispatchEvent(new PointerEvent("pointerdown", {
+        bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: id, pointerType: "mouse", button: 0
+      }));
+      document.dispatchEvent(new PointerEvent("pointermove", {
+        bubbles: true, cancelable: true, clientX: x + dx, clientY: y + dy, pointerId: id, pointerType: "mouse"
+      }));
+      document.dispatchEvent(new PointerEvent("pointerup", {
+        bubbles: true, cancelable: true, clientX: x + dx, clientY: y + dy, pointerId: id, pointerType: "mouse"
+      }));
+    }
   });
-  assert(resetDisabledOnSingle.disabled, "reset sizes disabled for one cell");
-  assert(resetDisabledOnSingle.hidden === 4, "single layout hides the other slots");
+  assert(lsGeom.first === "ls" && !lsGeom.old, "first picker slot is the L layout, single full-frame is gone");
+  assert(lsGeom.order === "ls,2v,3v,4v,5v,2h,3l,3t,4", "other layouts stay in place " + lsGeom.order);
+  assert(lsGeom.hidden === 3 && lsGeom.noVoid, "L layout is two photo cells");
+  assert(!lsGeom.resetDisabled, "reset sizes stays available");
+  assert(lsGeom.clip, "L photo is one clipped cell");
+  assert(lsGeom.hits.topRight === "0" && lsGeom.hits.bottomLeft === "0", "top-right and bottom-left are the L photo " + JSON.stringify(lsGeom.hits));
+  assert(lsGeom.hits.bottomRight === "1", "bottom-right is the square photo");
+  assert(lsGeom.b.l > 0.4 && lsGeom.b.t > 0.4 && lsGeom.b.r > 0.9 && lsGeom.b.b > 0.9, "square sits in the bottom-right " + JSON.stringify(lsGeom.b));
+  assert(lsGeom.seam.hLeft > 0.4 && lsGeom.seam.hRight > 0.9, "horizontal handle stays on the right column");
+  assert(lsGeom.seam.vTop > 0.35 && lsGeom.seam.vBottom > 0.9, "vertical handle stays beside the square " + JSON.stringify(lsGeom.seam));
+  assert(lsGeom.afterV.lw > lsGeom.before.lw + 30, "vertical drag widens the L stem");
+  assert(lsGeom.afterV.bw < lsGeom.before.bw - 30, "vertical drag narrows the square");
+  assert(lsGeom.afterH.bh > lsGeom.before.bh + 20, "horizontal drag grows the square");
+  near(lsGeom.afterH.lw, lsGeom.before.lw, 2, "horizontal drag keeps the column split");
+  assert(lsGeom.three.count === 3, "large-left layout still has three photo cells");
+  assert(lsGeom.three.areas.replace(/"/g, "") === "a b a c", "large-left areas unchanged " + lsGeom.three.areas);
+  assert(lsGeom.active === "2v", "restored the side-by-side layout");
 
   await page.evaluate(() => window.__collage.applyLayout("2v"));
   const before = await cellWidths(page);
@@ -725,6 +815,83 @@ try {
 
   await page.setViewport({ width: 1100, height: 900, deviceScaleFactor: 1, hasTouch: true, isMobile: false });
   await settleScroll(page);
+  const quad = await paint(page, (ctx, w, h) => {
+    ctx.fillStyle = "#e11d48";
+    ctx.fillRect(0, 0, w / 2, h / 2);
+    ctx.fillStyle = "#16a34a";
+    ctx.fillRect(w / 2, 0, w / 2, h / 2);
+    ctx.fillStyle = "#2563eb";
+    ctx.fillRect(0, h / 2, w / 2, h / 2);
+    ctx.fillStyle = "#facc15";
+    ctx.fillRect(w / 2, h / 2, w / 2, h / 2);
+  }, 800, 800);
+  const purple = await paint(page, (ctx, w, h) => {
+    ctx.fillStyle = "#7c3aed";
+    ctx.fillRect(0, 0, w, h);
+  }, 240, 240);
+  const lsExport = await page.evaluate(async (redUrl, purpleUrl, quadUrl) => {
+    window.__collage.applyLayout("ls");
+    window.__collage.resetCells();
+    document.getElementById("resetBorderBtn").click();
+    document.querySelector('[data-shape="shape-square"]').click();
+    await window.__collage.loadDataURL(0, redUrl);
+    await window.__collage.loadDataURL(1, purpleUrl);
+    const slot = document.querySelector('.slot[data-index="0"]');
+    const input = slot.querySelector('[data-action="zoom"]');
+    input.value = "160";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    const r = slot.getBoundingClientRect();
+    const px = r.left + r.width * 0.3;
+    const py = r.top + r.height * 0.2;
+    slot.dispatchEvent(new WheelEvent("wheel", {
+      bubbles: true, cancelable: true, deltaY: -80, clientX: px, clientY: py
+    }));
+    slot.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true, cancelable: true, clientX: px, clientY: py, pointerId: 81, pointerType: "mouse", button: 0
+    }));
+    document.dispatchEvent(new PointerEvent("pointermove", {
+      bubbles: true, cancelable: true, clientX: px - 50, clientY: py, pointerId: 81, pointerType: "mouse"
+    }));
+    document.dispatchEvent(new PointerEvent("pointerup", {
+      bubbles: true, cancelable: true, clientX: px - 50, clientY: py, pointerId: 81, pointerType: "mouse"
+    }));
+    const placed = window.__collage.placementFor(0);
+    const gesture = {
+      zoom: window.__collage.slots[0].zoom,
+      panX: window.__collage.slots[0].panX,
+      covers: placed.bgW >= placed.cw - 0.5 && placed.bgH >= placed.ch - 0.5
+    };
+    await window.__collage.loadDataURL(0, quadUrl);
+    window.__collage.slots[0].zoom = 1;
+    window.__collage.slots[0].panX = 0.5;
+    window.__collage.slots[0].panY = 0.5;
+    window.__collage.renderAll();
+    const frame = document.getElementById("frame");
+    const fr = frame.getBoundingClientRect();
+    const canvas = window.__collage.exportCollage();
+    const ctx = canvas.getContext("2d");
+    function sample(xRatio, yRatio) {
+      const sx = Math.round(fr.width * xRatio * (canvas.width / fr.width));
+      const sy = Math.round(fr.height * yRatio * (canvas.height / fr.height));
+      const px = ctx.getImageData(Math.max(0, Math.min(canvas.width - 1, sx)), Math.max(0, Math.min(canvas.height - 1, sy)), 1, 1).data;
+      return [px[0], px[1], px[2]];
+    }
+    return {
+      gesture,
+      topLeft: sample(0.25, 0.25),
+      topRight: sample(0.75, 0.22),
+      bottomLeft: sample(0.22, 0.75),
+      square: sample(0.75, 0.78)
+    };
+  }, red, purple, quad);
+  assert(lsExport.gesture.zoom > 1.6 && lsExport.gesture.zoom <= 3, "L photo still zooms, got " + lsExport.gesture.zoom);
+  assert(lsExport.gesture.panX > 0.5, "L photo still pans, panX " + lsExport.gesture.panX);
+  assert(lsExport.gesture.covers, "zoomed L photo still covers its cell");
+  assert(colorNear(lsExport.topLeft, [225, 29, 72], 24), "export top-left of the L shows that photo " + lsExport.topLeft);
+  assert(colorNear(lsExport.topRight, [22, 163, 74], 24), "export top-right is part of the L photo " + lsExport.topRight);
+  assert(colorNear(lsExport.bottomLeft, [37, 99, 235], 24), "export bottom-left is part of the L photo " + lsExport.bottomLeft);
+  assert(colorNear(lsExport.square, [124, 58, 237], 24), "export square shows its own photo " + lsExport.square);
+
   await page.evaluate(async (redUrl, blueUrl, bandsUrl) => {
     window.__collage.applyLayout("4");
     window.__collage.resetCells();

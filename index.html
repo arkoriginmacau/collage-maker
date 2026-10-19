@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="app-version" content="1.2.1">
+<meta name="app-version" content="1.3.0">
 <title>Photo Collage Maker</title>
 <style>
   :root{
@@ -88,7 +88,32 @@
   .frame.shape-portrait{ aspect-ratio:3/4; }
   .frame.shape-landscape{ aspect-ratio:4/3; }
 
-  .frame.layout-1{ grid-template-columns:1fr; grid-template-areas:"a"; }
+  .frame.layout-ls{
+    position:relative;
+    grid-template-columns:1fr 1fr;
+    grid-template-rows:1fr 1fr;
+  }
+  .frame.layout-ls .slot[data-index="0"]{
+    position:absolute;
+    z-index:1;
+    left:var(--border-width);
+    top:var(--border-width);
+    right:var(--border-width);
+    bottom:var(--border-width);
+  }
+  .frame.layout-ls .slot[data-index="0"] .empty-hint{
+    bottom:auto;
+    height:var(--ls-top, 50%);
+  }
+  .frame.layout-ls .slot[data-index="0"] .zoom-bar{
+    right:auto;
+    width:calc(var(--ls-left, 50%) - 12px);
+  }
+  .frame.layout-ls .slot[data-index="1"]{
+    z-index:2;
+    grid-column:2;
+    grid-row:2;
+  }
   .frame.layout-2v{ grid-template-columns:1fr 1fr; grid-template-areas:"a b"; }
   .frame.layout-2h{ grid-template-columns:1fr; grid-template-rows:1fr 1fr; grid-template-areas:"a" "b"; }
   .frame.layout-3l{ grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; grid-template-areas:"a b" "a c"; }
@@ -277,7 +302,21 @@
   .mini > div{ background:#8b8b96; border-radius:1px; }
   .layout-btn.active .mini{ background:var(--accent); }
   .layout-btn.active .mini > div{ background:#d9c6ff; }
-  .mini.layout-1{ grid-template-columns:1fr; grid-template-areas:"a"; }
+  .mini.layout-ls{
+    grid-template-columns:1fr 1fr;
+    grid-template-rows:1fr 1fr;
+  }
+  .mini-l{
+    grid-column:1 / -1;
+    grid-row:1 / -1;
+    clip-path:polygon(0 0, 100% 0, 100% calc(50% - 1px), calc(50% - 1px) calc(50% - 1px), calc(50% - 1px) 100%, 0 100%);
+  }
+  .mini-sq{
+    grid-column:2;
+    grid-row:2;
+    position:relative;
+    z-index:1;
+  }
   .mini.layout-2v{ grid-template-columns:1fr 1fr; grid-template-areas:"a b"; }
   .mini.layout-2h{ grid-template-columns:1fr; grid-template-rows:1fr 1fr; grid-template-areas:"a" "b"; }
   .mini.layout-3l{ grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; grid-template-areas:"a b" "a c"; }
@@ -465,7 +504,7 @@
       <div>
         <span class="field-label">Layout</span>
         <div class="layout-grid">
-          <button class="layout-btn" data-layout="1" title="1 photo"><div class="mini layout-1"><div style="grid-area:a"></div></div></button>
+          <button class="layout-btn" data-layout="ls" title="L and bottom-right square"><div class="mini layout-ls"><div class="mini-l"></div><div class="mini-sq"></div></div></button>
           <button class="layout-btn active" data-layout="2v" title="2 side by side"><div class="mini layout-2v"><div style="grid-area:a"></div><div style="grid-area:b"></div></div></button>
           <button class="layout-btn" data-layout="3v" title="3 vertical rows"><div class="mini layout-3v"><div style="grid-area:a"></div><div style="grid-area:b"></div><div style="grid-area:c"></div></div></button>
           <button class="layout-btn" data-layout="4v" title="4 vertical rows"><div class="mini layout-4v"><div style="grid-area:a"></div><div style="grid-area:b"></div><div style="grid-area:c"></div><div style="grid-area:d"></div></div></button>
@@ -514,14 +553,14 @@
     </div>
   </div>
 
-  <footer class="site-footer">Photo Collage Maker <span data-version-slot>v1.2.1</span></footer>
+  <footer class="site-footer">Photo Collage Maker <span data-version-slot>v1.3.0</span></footer>
 
 <script>
 (function(){
   "use strict";
 
   var LAYOUTS = {
-    "1":  { areas: [["a"]] },
+    "ls": { areas: [["a", "a"], ["a", "b"]] },
     "2v": { areas: [["a", "b"]] },
     "2h": { areas: [["a"], ["b"]] },
     "3v": { areas: [["a", "b", "c"]] },
@@ -678,14 +717,41 @@
     renderSlot(slot);
   }
 
+  function areasRectangular(areas){
+    var bounds = {};
+    var r, c, name, b;
+    for (r = 0; r < areas.length; r++){
+      for (c = 0; c < areas[r].length; c++){
+        name = areas[r][c];
+        if (!bounds[name]) bounds[name] = { r0: r, r1: r, c0: c, c1: c, n: 0 };
+        b = bounds[name];
+        if (r < b.r0) b.r0 = r;
+        if (r > b.r1) b.r1 = r;
+        if (c < b.c0) b.c0 = c;
+        if (c > b.c1) b.c1 = c;
+        b.n++;
+      }
+    }
+    var names = Object.keys(bounds);
+    for (var i = 0; i < names.length; i++){
+      b = bounds[names[i]];
+      if (b.n !== (b.r1 - b.r0 + 1) * (b.c1 - b.c0 + 1)) return false;
+    }
+    return true;
+  }
+
   function applyGridTracks(){
     var spec = specOf(currentLayout);
     var splits = getSplits(currentLayout);
     frame.style.gridTemplateColumns = splits.cols.map(function(w){ return w + "fr"; }).join(" ");
     frame.style.gridTemplateRows = splits.rows.map(function(w){ return w + "fr"; }).join(" ");
-    frame.style.gridTemplateAreas = spec.areas.map(function(row){
-      return "\"" + row.join(" ") + "\"";
-    }).join(" ");
+    if (areasRectangular(spec.areas)){
+      frame.style.gridTemplateAreas = spec.areas.map(function(row){
+        return "\"" + row.join(" ") + "\"";
+      }).join(" ");
+    } else {
+      frame.style.gridTemplateAreas = "none";
+    }
   }
 
   function visibleAreaNames(spec){
@@ -694,10 +760,9 @@
     for (var r = 0; r < spec.rows; r++){
       for (var c = 0; c < spec.cols; c++){
         var name = spec.areas[r][c];
-        if (!seen[name]){
-          seen[name] = true;
-          list.push(name);
-        }
+        if (name === "." || seen[name]) continue;
+        seen[name] = true;
+        list.push(name);
       }
     }
     return list;
@@ -784,12 +849,55 @@
     return Math.min(MIN_CELL_PX, cap);
   }
 
-  function areaSlot(name){
-    return slots[AREA_INDEX[name]];
+  function cellRect(r, c){
+    var tracks = measureTracks();
+    var frameRect = frame.getBoundingClientRect();
+    var style = getComputedStyle(frame);
+    var padL = parseFloat(style.paddingLeft) || 0;
+    var padT = parseFloat(style.paddingTop) || 0;
+    var x = tracks.cols.pos[c];
+    var y = tracks.rows.pos[r];
+    var w = tracks.cols.sizes[c];
+    var h = tracks.rows.sizes[r];
+    var left = frameRect.left + padL + x;
+    var top = frameRect.top + padT + y;
+    return { left: left, top: top, width: w, height: h, right: left + w, bottom: top + h };
+  }
+
+  function lMetrics(){
+    var el = slots[0].el;
+    var tracks = measureTracks();
+    var cols = tracks.cols;
+    var rows = tracks.rows;
+    var trackW = cols.sizes.length ? cols.pos[cols.sizes.length - 1] + cols.sizes[cols.sizes.length - 1] : 1;
+    var trackH = rows.sizes.length ? rows.pos[rows.sizes.length - 1] + rows.sizes[rows.sizes.length - 1] : 1;
+    var elW = el.clientWidth || trackW;
+    var elH = el.clientHeight || trackH;
+    var sx = trackW > 0 ? elW / trackW : 1;
+    var sy = trackH > 0 ? elH / trackH : 1;
+    return {
+      w: elW,
+      h: elH,
+      lw: (cols.sizes[0] || 0) * sx,
+      th: (rows.sizes[0] || 0) * sy
+    };
+  }
+
+  function updateLClip(){
+    var el = slots[0].el;
+    if (currentLayout !== "ls"){
+      el.style.clipPath = "";
+      frame.style.removeProperty("--ls-left");
+      frame.style.removeProperty("--ls-top");
+      return;
+    }
+    var m = lMetrics();
+    el.style.clipPath = "polygon(0 0, " + m.w + "px 0, " + m.w + "px " + m.th + "px, " + m.lw + "px " + m.th + "px, " + m.lw + "px " + m.h + "px, 0 " + m.h + "px)";
+    frame.style.setProperty("--ls-left", m.lw + "px");
+    frame.style.setProperty("--ls-top", m.th + "px");
   }
 
   function placeSeam(el, seam){
-    var spec = specOf(currentLayout);
     var origin = handlesEl.getBoundingClientRect();
     var HIT = pointerHit();
     var grip = el.querySelector(".grip");
@@ -804,8 +912,8 @@
 
     if (seam.axis === "v"){
       for (var r = seam.start; r < seam.end; r++){
-        var a = areaSlot(spec.areas[r][seam.index]).el.getBoundingClientRect();
-        var b = areaSlot(spec.areas[r][seam.index + 1]).el.getBoundingClientRect();
+        var a = cellRect(r, seam.index);
+        var b = cellRect(r, seam.index + 1);
         top = Math.min(top, a.top, b.top);
         bottom = Math.max(bottom, a.bottom, b.bottom);
         if (r === seam.start){
@@ -831,8 +939,8 @@
       }
     } else {
       for (var c = seam.start; c < seam.end; c++){
-        var above = areaSlot(spec.areas[seam.index][c]).el.getBoundingClientRect();
-        var below = areaSlot(spec.areas[seam.index + 1][c]).el.getBoundingClientRect();
+        var above = cellRect(seam.index, c);
+        var below = cellRect(seam.index + 1, c);
         left = Math.min(left, above.left, below.left);
         right = Math.max(right, above.right, below.right);
         if (c === seam.start){
@@ -878,17 +986,17 @@
     Array.prototype.forEach.call(seams, function(el){
       if (el._seam) placeSeam(el, el._seam);
     });
+    updateLClip();
   }
 
   function pairPixels(seam){
-    var spec = specOf(currentLayout);
     if (seam.axis === "v"){
-      var left = areaSlot(spec.areas[seam.start][seam.index]).el.getBoundingClientRect();
-      var right = areaSlot(spec.areas[seam.start][seam.index + 1]).el.getBoundingClientRect();
+      var left = cellRect(seam.start, seam.index);
+      var right = cellRect(seam.start, seam.index + 1);
       return { startPx: left.width, nextPx: right.width };
     }
-    var above = areaSlot(spec.areas[seam.index][seam.start]).el.getBoundingClientRect();
-    var below = areaSlot(spec.areas[seam.index + 1][seam.start]).el.getBoundingClientRect();
+    var above = cellRect(seam.index, seam.start);
+    var below = cellRect(seam.index + 1, seam.start);
     return { startPx: above.height, nextPx: below.height };
   }
 
@@ -1031,13 +1139,23 @@
       Object.keys(AREA_INDEX).forEach(function(letter){
         if (AREA_INDEX[letter] === i) name = letter;
       });
+      slot.el.style.gridColumn = "";
+      slot.el.style.gridRow = "";
+      slot.el.style.clipPath = "";
       if (name && visible[name]){
         slot.el.classList.remove("hidden");
         slot.el.style.gridArea = name;
       } else {
         slot.el.classList.add("hidden");
+        slot.el.style.gridArea = "auto";
       }
     });
+    if (key === "ls"){
+      slots[0].el.style.gridArea = "auto";
+      slots[1].el.style.gridArea = "auto";
+      slots[1].el.style.gridColumn = "2";
+      slots[1].el.style.gridRow = "2";
+    }
     document.querySelectorAll(".layout-btn").forEach(function(btn){
       btn.classList.toggle("active", btn.dataset.layout === key);
     });
@@ -1467,7 +1585,7 @@
     ctx.fillStyle = borderColor || "#c21d2e";
     ctx.fillRect(0, 0, EXPORT_W, EXPORT_H);
 
-    slots.forEach(function(slot){
+    slots.forEach(function(slot, index){
       if (slot.el.classList.contains("hidden") || !slot.img) return;
       var r = slot.el.getBoundingClientRect();
       var dx = (r.left - frameRect.left) * scaleFactor;
@@ -1485,7 +1603,20 @@
 
       ctx.save();
       ctx.beginPath();
-      ctx.rect(dx, dy, dw, dh);
+      if (currentLayout === "ls" && index === 0){
+        var shape = lMetrics();
+        var lw = dw * (shape.lw / (shape.w || 1));
+        var th = dh * (shape.th / (shape.h || 1));
+        ctx.moveTo(dx, dy);
+        ctx.lineTo(dx + dw, dy);
+        ctx.lineTo(dx + dw, dy + th);
+        ctx.lineTo(dx + lw, dy + th);
+        ctx.lineTo(dx + lw, dy + dh);
+        ctx.lineTo(dx, dy + dh);
+        ctx.closePath();
+      } else {
+        ctx.rect(dx, dy, dw, dh);
+      }
       ctx.clip();
       ctx.drawImage(slot.img, sx, sy, sw, sh, dx, dy, dw, dh);
       ctx.restore();
