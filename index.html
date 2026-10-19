@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="app-version" content="1.3.1">
+<meta name="app-version" content="1.3.2">
 <title>Photo Collage Maker</title>
 <style>
   :root{
@@ -604,7 +604,7 @@
     </div>
   </div>
 
-  <footer class="site-footer">Photo Collage Maker <span data-version-slot>v1.3.1</span></footer>
+  <footer class="site-footer">Photo Collage Maker <span data-version-slot>v1.3.2</span></footer>
 
 <script>
 (function(){
@@ -686,8 +686,10 @@
     return splitState[key];
   }
 
-  function placement(cw, ch, iw, ih, zoom, panX, panY){
-    var cover = Math.max(cw / iw, ch / ih);
+  function placement(cw, ch, iw, ih, zoom, panX, panY, scaleW, scaleH){
+    if (!(scaleW > 0)) scaleW = cw;
+    if (!(scaleH > 0)) scaleH = ch;
+    var cover = Math.max(scaleW / iw, scaleH / ih);
     var total = cover * zoom;
     var bgW = iw * total;
     var bgH = ih * total;
@@ -705,7 +707,23 @@
     };
   }
 
+  // The L photo is cover-fit to the full frame. Cover-fitting the square to
+  // its own smaller box made the same Size magnify that photo by less.
+  // Share the L frame's cover so Size is the same punch-in on both cells.
+  function scaleBox(slot){
+    var w = slot.el.clientWidth;
+    var h = slot.el.clientHeight;
+    if (currentLayout === "ls" && slot === slots[1]){
+      var ref = slots[0].el;
+      if (ref.clientWidth > 1 && ref.clientHeight > 1){
+        return { w: ref.clientWidth, h: ref.clientHeight };
+      }
+    }
+    return { w: w, h: h };
+  }
+
   function placementFor(slot){
+    var box = scaleBox(slot);
     return placement(
       slot.el.clientWidth,
       slot.el.clientHeight,
@@ -713,7 +731,9 @@
       slot.img.naturalHeight,
       slot.zoom,
       slot.panX,
-      slot.panY
+      slot.panY,
+      box.w,
+      box.h
     );
   }
 
@@ -752,7 +772,8 @@
     var iw = slot.img.naturalWidth;
     var ih = slot.img.naturalHeight;
     if (cw < 1 || ch < 1 || !iw || !ih) return;
-    var cover = Math.max(cw / iw, ch / ih);
+    var box = scaleBox(slot);
+    var cover = Math.max(box.w / iw, box.h / ih);
     newZoom = clamp(newZoom, MIN_ZOOM, MAX_ZOOM);
     var oldTotal = cover * oldZoom;
     if (oldTotal <= 0) return;
@@ -1765,7 +1786,14 @@
       var iw = slot.img.naturalWidth;
       var ih = slot.img.naturalHeight;
       if (!iw || !ih || dw < 1 || dh < 1) return;
-      var m = placement(dw, dh, iw, ih, slot.zoom, slot.panX, slot.panY);
+      var scaleW = dw;
+      var scaleH = dh;
+      if (currentLayout === "ls" && index === 1){
+        var refRect = slots[0].el.getBoundingClientRect();
+        scaleW = refRect.width * scaleFactor;
+        scaleH = refRect.height * scaleFactor;
+      }
+      var m = placement(dw, dh, iw, ih, slot.zoom, slot.panX, slot.panY, scaleW, scaleH);
       var sx = -m.ox / m.total;
       var sy = -m.oy / m.total;
       var sw = dw / m.total;

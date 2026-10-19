@@ -991,6 +991,73 @@ try {
   assert(colorNear(lsExport.bottomLeft, [37, 99, 235], 24), "export bottom-left is part of the L photo " + lsExport.bottomLeft);
   assert(colorNear(lsExport.square, [124, 58, 237], 24), "export square shows its own photo " + lsExport.square);
 
+  const portrait = await paint(page, (ctx, w, h) => {
+    ctx.fillStyle = "#7f1d1d";
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = "#fdba74";
+    ctx.beginPath();
+    ctx.ellipse(w / 2, h / 2, w * 0.22, h * 0.16, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }, 600, 800);
+  const uniformZoom = await page.evaluate(async (photoUrl) => {
+    window.__collage.applyLayout("ls");
+    window.__collage.resetCells();
+    await window.__collage.loadDataURL(0, photoUrl);
+    await window.__collage.loadDataURL(1, photoUrl);
+    function snap(zL, zSq) {
+      window.__collage.slots[0].zoom = zL;
+      window.__collage.slots[1].zoom = zSq;
+      window.__collage.slots[0].panX = 0.5;
+      window.__collage.slots[0].panY = 0.5;
+      window.__collage.slots[1].panX = 0.5;
+      window.__collage.slots[1].panY = 0.5;
+      window.__collage.renderAll();
+      const l = window.__collage.placementFor(0);
+      const sq = window.__collage.placementFor(1);
+      const exported = window.__collage.exportCollage();
+      const ctx = exported.getContext("2d");
+      const fr = document.getElementById("frame").getBoundingClientRect();
+      const slot = document.querySelector('.slot[data-index="1"]').getBoundingClientRect();
+      const sx = Math.round((slot.left - fr.left + slot.width * 0.5) * (exported.width / fr.width));
+      const sy = Math.round((slot.top - fr.top + slot.height * 0.5) * (exported.height / fr.height));
+      const px = ctx.getImageData(sx, sy, 1, 1).data;
+      return {
+        l: l.total,
+        sq: sq.total,
+        covers: sq.bgW >= sq.cw - 0.5 && sq.bgH >= sq.ch - 0.5,
+        seen: sq.ch / sq.bgH,
+        exportCenter: [px[0], px[1], px[2]]
+      };
+    }
+    const same = snap(2, 2);
+    const punched = snap(1, 3);
+    window.__collage.applyLayout("2v");
+    window.__collage.resetCells();
+    window.__collage.slots[0].zoom = 2;
+    window.__collage.slots[1].zoom = 2;
+    window.__collage.renderAll();
+    const half = {
+      a: window.__collage.placementFor(0).total,
+      b: window.__collage.placementFor(1).total
+    };
+    window.__collage.slots.forEach((slot) => {
+      slot.img = null;
+      slot.dataURL = null;
+      slot.zoom = 1;
+      slot.panX = 0.5;
+      slot.panY = 0.5;
+    });
+    window.__collage.renderAll();
+    window.__collage.applyLayout("2v");
+    return { same, punched, half };
+  }, portrait);
+  near(uniformZoom.same.sq, uniformZoom.same.l, uniformZoom.same.l * 0.02, "equal Size uses the same photo scale on the L and the square");
+  assert(uniformZoom.same.covers, "square photo still covers the small cell");
+  assert(uniformZoom.same.seen < 0.7, "square shows a tighter crop than a shrunk full photo, seen " + uniformZoom.same.seen);
+  assert(uniformZoom.punched.sq > uniformZoom.punched.l * 2.8, "max Size on the square punches in much further than the L at 100% (" + uniformZoom.punched.sq + " vs " + uniformZoom.punched.l + ")");
+  near(uniformZoom.half.a, uniformZoom.half.b, uniformZoom.half.a * 0.02, "half-half cells keep their own matching scale");
+  assert(colorNear(uniformZoom.same.exportCenter, [253, 186, 116], 12), "exported square uses the same centered crop " + uniformZoom.same.exportCenter);
+
   await page.evaluate(async (redUrl, blueUrl, bandsUrl) => {
     window.__collage.applyLayout("4");
     window.__collage.resetCells();
