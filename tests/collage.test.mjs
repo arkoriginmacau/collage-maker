@@ -486,12 +486,48 @@ try {
   }, red, blue);
 
   const sliderZoom = await page.evaluate(() => {
-    const input = document.querySelector('.slot[data-index="0"] [data-action="zoom"]');
+    const input = document.querySelector('#sizeRail [data-action="zoom"][data-slot="0"]');
     input.value = "180";
     input.dispatchEvent(new Event("input", { bubbles: true }));
     return window.__collage.slots[0].zoom;
   });
   near(sliderZoom, 1.8, 0.001, "size slider sets zoom");
+
+  const outside = await page.evaluate(() => {
+    const keys = ["ls", "2v", "2h", "3v", "4v", "5v", "3l", "3t", "4"];
+    const frame = document.getElementById("frame");
+    const out = {};
+    keys.forEach((key) => {
+      window.__collage.applyLayout(key);
+      window.__collage.renderAll();
+      const fr = frame.getBoundingClientRect();
+      const filled = [...document.querySelectorAll(".slot.filled:not(.hidden)")];
+      const bars = [...document.querySelectorAll("#sizeRail .zoom-bar.is-active")].map((bar) => {
+        const r = bar.getBoundingClientRect();
+        const input = bar.querySelector("input");
+        return {
+          h: r.height,
+          beside: r.left >= fr.right - 1,
+          clear: r.left >= fr.right - 1 || r.right <= fr.left + 1 || r.bottom <= fr.top + 1 || r.top >= fr.bottom - 1,
+          inFrame: frame.contains(bar),
+          slot: input.getAttribute("data-slot")
+        };
+      });
+      out[key] = { count: bars.length, filled: filled.length, bars };
+    });
+    window.__collage.applyLayout("2v");
+    window.__collage.renderAll();
+    return out;
+  });
+  ["ls", "2v", "2h", "3v", "4v", "5v", "3l", "3t", "4"].forEach((key) => {
+    const row = outside[key];
+    assert(row.count === row.filled && row.count > 0, key + " shows a Size control for each filled cell " + JSON.stringify(row));
+    row.bars.forEach((bar) => {
+      assert(bar.beside && bar.clear, key + " Size control stays beside the collage " + JSON.stringify(bar));
+      assert(!bar.inFrame, key + " Size control is outside the frame");
+      assert(bar.h >= 40, key + " Size control is touch-sized, height " + bar.h);
+    });
+  });
 
   const wheelZoom = await page.evaluate(() => {
     const slot = document.querySelector('.slot[data-index="0"]');
@@ -722,7 +758,7 @@ try {
     const remove = document.querySelector('.slot[data-index="1"] .remove-btn');
     const rr = remove.getBoundingClientRect();
     const hit = document.elementFromPoint(rr.left + rr.width / 2, rr.top + rr.height / 2);
-    const slider = document.querySelector('.slot[data-index="1"] [data-action="zoom"]');
+    const slider = document.querySelector('#sizeRail [data-action="zoom"][data-slot="1"]');
     const sr = slider.getBoundingClientRect();
     const sliderHit = document.elementFromPoint(sr.left + sr.width / 2, sr.top + sr.height / 2);
     return {
@@ -936,7 +972,7 @@ try {
     await window.__collage.loadDataURL(0, redUrl);
     await window.__collage.loadDataURL(1, purpleUrl);
     const slot = document.querySelector('.slot[data-index="0"]');
-    const input = slot.querySelector('[data-action="zoom"]');
+    const input = document.querySelector('#sizeRail [data-action="zoom"][data-slot="0"]');
     input.value = "160";
     input.dispatchEvent(new Event("input", { bubbles: true }));
     const r = slot.getBoundingClientRect();
