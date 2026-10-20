@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="app-version" content="1.3.6">
+<meta name="app-version" content="1.3.7">
 <title>Photo Collage Maker</title>
 <style>
   :root{
@@ -274,6 +274,9 @@
   }
   .seam-v{ cursor:col-resize; }
   .seam-h{ cursor:row-resize; }
+  .seam.is-locked,
+  .seam.is-locked.seam-v,
+  .seam.is-locked.seam-h{ cursor:default; }
   .seam .grip{
     border-radius:99px;
     background:#fff;
@@ -478,6 +481,7 @@
     user-select:none;
     -webkit-user-select:none;
   }
+  .split-track.is-locked{ cursor:default; }
   .split-thumb{
     position:absolute;
     top:6px;
@@ -638,7 +642,7 @@
     </div>
   </div>
 
-  <footer class="site-footer">Photo Collage Maker <span data-version-slot>v1.3.6</span></footer>
+  <footer class="site-footer">Photo Collage Maker <span data-version-slot>v1.3.7</span></footer>
 
 <script>
 (function(){
@@ -795,6 +799,7 @@
       var n = String(Number(slot.el.getAttribute("data-index")) + 1);
       slot.lockBtn.setAttribute("aria-label", (locked ? "Unlock photo " : "Lock photo ") + n + " view");
     }
+    syncResizeLocks();
   }
 
   function renderSlot(slot){
@@ -939,6 +944,63 @@
       pushSegments(seams, "h", r, hflags);
     }
     return seams;
+  }
+
+  function areaNameForIndex(index){
+    var letters = Object.keys(AREA_INDEX);
+    for (var i = 0; i < letters.length; i++){
+      if (AREA_INDEX[letters[i]] === index) return letters[i];
+    }
+    return null;
+  }
+
+  function seamTouchesLocked(seam){
+    if (!seam) return false;
+    var spec = specOf(currentLayout);
+    for (var i = 0; i < slots.length; i++){
+      var slot = slots[i];
+      if (!slot.locked || slot.el.classList.contains("hidden")) continue;
+      var name = areaNameForIndex(i);
+      if (!name) continue;
+      var onA = false;
+      var onB = false;
+      var r, c;
+      if (seam.axis === "v"){
+        for (r = seam.start; r < seam.end; r++){
+          if (spec.areas[r][seam.index] === name) onA = true;
+          if (spec.areas[r][seam.index + 1] === name) onB = true;
+        }
+      } else {
+        for (c = seam.start; c < seam.end; c++){
+          if (spec.areas[seam.index][c] === name) onA = true;
+          if (spec.areas[seam.index + 1][c] === name) onB = true;
+        }
+      }
+      if (onA !== onB) return true;
+    }
+    return false;
+  }
+
+  function squareResizeBlocked(){
+    if (currentLayout !== "ls") return false;
+    return slots.some(function(slot){
+      return slot.locked && !slot.el.classList.contains("hidden");
+    });
+  }
+
+  function syncResizeLocks(){
+    var seams = handlesEl.querySelectorAll(".seam");
+    Array.prototype.forEach.call(seams, function(el){
+      var blocked = seamTouchesLocked(el._seam);
+      el.classList.toggle("is-locked", blocked);
+      if (blocked) el.setAttribute("aria-disabled", "true");
+      else el.removeAttribute("aria-disabled");
+    });
+    if (splitTrack){
+      var blockSplit = squareResizeBlocked();
+      splitTrack.classList.toggle("is-locked", blockSplit);
+      splitTrack.setAttribute("aria-disabled", blockSplit ? "true" : "false");
+    }
   }
 
   function pointerHit(){
@@ -1176,7 +1238,7 @@
   }
 
   function setSquareFraction(fraction){
-    if (currentLayout !== "ls") return;
+    if (currentLayout !== "ls" || squareResizeBlocked()) return;
     var limits = squareLimits();
     var f = clamp(fraction, limits.lo, limits.hi);
     var splits = getSplits("ls");
@@ -1197,7 +1259,7 @@
   }
 
   function onSplitPointerDown(e){
-    if (currentLayout !== "ls") return;
+    if (currentLayout !== "ls" || squareResizeBlocked()) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
     e.preventDefault();
     var pointerId = e.pointerId;
@@ -1222,7 +1284,7 @@
   }
 
   function onSplitKeydown(e){
-    if (currentLayout !== "ls") return;
+    if (currentLayout !== "ls" || squareResizeBlocked()) return;
     var limits = squareLimits();
     var span = limits.hi - limits.lo;
     var step = (e.shiftKey ? 0.12 : 0.04) * span;
@@ -1279,9 +1341,14 @@
   function onSeamPointerDown(e){
     if (activeSeamDrag) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
+    var el = e.currentTarget;
+    if (seamTouchesLocked(el._seam)){
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     e.preventDefault();
     e.stopPropagation();
-    var el = e.currentTarget;
     var seam = el._seam;
     var snap = beginSeam(seam);
     var pointerId = e.pointerId;
@@ -1315,6 +1382,7 @@
     e.preventDefault();
     e.stopPropagation();
     var seam = e.currentTarget._seam;
+    if (seamTouchesLocked(seam)) return;
     var weights = seam.axis === "v" ? getSplits(currentLayout).cols : getSplits(currentLayout).rows;
     var sum = weights[seam.index] + weights[seam.index + 1];
     weights[seam.index] = sum / 2;
@@ -1326,6 +1394,7 @@
 
   function onSeamKeydown(e){
     var seam = e.currentTarget._seam;
+    if (seamTouchesLocked(seam)) return;
     var step = e.shiftKey ? 32 : 12;
     var delta = 0;
     if (seam.axis === "v"){
@@ -1363,6 +1432,7 @@
     });
     positionHandles();
     resetCellsBtn.disabled = seams.length === 0;
+    syncResizeLocks();
   }
 
   function resetCells(){
