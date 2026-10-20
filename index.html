@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="app-version" content="1.3.5">
+<meta name="app-version" content="1.3.6">
 <title>Photo Collage Maker</title>
 <style>
   :root{
@@ -81,6 +81,56 @@
     gap:8px;
   }
   .size-rail:not(:has(.zoom-bar.is-active)){ display:none; }
+  .clear-row{
+    width:100%;
+    max-width:420px;
+    display:flex;
+    justify-content:flex-start;
+    align-items:center;
+    gap:8px;
+  }
+  .clear-row:not(:has(.remove-btn.is-active)){ display:none; }
+  .clear-row .remove-btn{
+    display:none;
+    align-items:center;
+    justify-content:center;
+    gap:4px;
+    min-width:44px;
+    height:44px;
+    padding:0 10px;
+    border:0;
+    border-radius:12px;
+    background:#f3f0fa;
+    color:var(--ink);
+    font-size:20px;
+    font-weight:600;
+    line-height:1;
+    cursor:pointer;
+    touch-action:manipulation;
+  }
+  .clear-row .remove-btn.is-active{ display:flex; }
+  .clear-row .remove-num{
+    font-size:12px;
+    font-weight:600;
+  }
+  .zoom-bar .lock-btn{
+    flex:none;
+    height:44px;
+    padding:0 10px;
+    border:0;
+    border-radius:12px;
+    background:#fff;
+    color:var(--ink);
+    font-size:13px;
+    font-weight:600;
+    cursor:pointer;
+    touch-action:manipulation;
+  }
+  .zoom-bar .lock-btn[aria-pressed="true"]{
+    background:var(--accent);
+    color:#fff;
+  }
+  .zoom-bar input[type=range]:disabled{ opacity:.45; }
   .size-rail-label{
     margin:0;
     font-size:12px;
@@ -200,26 +250,9 @@
     touch-action:none;
   }
   .slot.filled .empty-hint{ display:none; }
-
-  .slot .remove-btn{
-    position:absolute;
-    top:6px;
-    right:6px;
-    width:22px;
-    height:22px;
-    border-radius:50%;
-    background:rgba(20,20,24,.55);
-    color:#fff;
-    border:none;
-    font-size:13px;
-    line-height:1;
-    cursor:pointer;
-    display:none;
-    align-items:center;
-    justify-content:center;
-    z-index:6;
-  }
-  .slot.filled .remove-btn{ display:flex; }
+  .slot.locked,
+  .slot.locked.filled,
+  .slot.locked.filled:active{ cursor:default; }
 
   .handles{
     position:absolute;
@@ -502,31 +535,33 @@
   <div class="app">
     <div class="stage">
       <div class="frame-wrap">
+        <div class="clear-row" id="clearRow" aria-label="Remove photos">
+          <button type="button" class="remove-btn" data-action="remove" data-slot="0" aria-label="Remove photo 1"><span class="remove-num">1</span><span aria-hidden="true">&times;</span></button>
+          <button type="button" class="remove-btn" data-action="remove" data-slot="1" aria-label="Remove photo 2"><span class="remove-num">2</span><span aria-hidden="true">&times;</span></button>
+          <button type="button" class="remove-btn" data-action="remove" data-slot="2" aria-label="Remove photo 3"><span class="remove-num">3</span><span aria-hidden="true">&times;</span></button>
+          <button type="button" class="remove-btn" data-action="remove" data-slot="3" aria-label="Remove photo 4"><span class="remove-num">4</span><span aria-hidden="true">&times;</span></button>
+          <button type="button" class="remove-btn" data-action="remove" data-slot="4" aria-label="Remove photo 5"><span class="remove-num">5</span><span aria-hidden="true">&times;</span></button>
+        </div>
         <div class="frame-shell" id="frameShell">
           <div class="frame shape-portrait layout-2v" id="frame">
             <div class="slot" data-index="0" style="grid-area:a">
               <div class="empty-hint"><span class="plus">+</span><span>Add photo</span></div>
-              <button class="remove-btn" data-action="remove" aria-label="Remove photo">&times;</button>
               <input type="file" accept="image/*" data-action="file">
             </div>
             <div class="slot" data-index="1" style="grid-area:b">
               <div class="empty-hint"><span class="plus">+</span><span>Add photo</span></div>
-              <button class="remove-btn" data-action="remove" aria-label="Remove photo">&times;</button>
               <input type="file" accept="image/*" data-action="file">
             </div>
             <div class="slot" data-index="2" style="grid-area:c">
               <div class="empty-hint"><span class="plus">+</span><span>Add photo</span></div>
-              <button class="remove-btn" data-action="remove" aria-label="Remove photo">&times;</button>
               <input type="file" accept="image/*" data-action="file">
             </div>
             <div class="slot" data-index="3" style="grid-area:d">
               <div class="empty-hint"><span class="plus">+</span><span>Add photo</span></div>
-              <button class="remove-btn" data-action="remove" aria-label="Remove photo">&times;</button>
               <input type="file" accept="image/*" data-action="file">
             </div>
             <div class="slot" data-index="4" style="grid-area:e">
               <div class="empty-hint"><span class="plus">+</span><span>Add photo</span></div>
-              <button class="remove-btn" data-action="remove" aria-label="Remove photo">&times;</button>
               <input type="file" accept="image/*" data-action="file">
             </div>
           </div>
@@ -534,11 +569,11 @@
         </div>
         <div class="size-rail" id="sizeRail" aria-label="Photo size">
           <p class="size-rail-label">Size</p>
-          <label class="zoom-bar" data-slot="0"><span>1</span><input type="range" min="100" max="300" value="100" data-action="zoom" data-slot="0" aria-label="Photo 1 size"></label>
-          <label class="zoom-bar" data-slot="1"><span>2</span><input type="range" min="100" max="300" value="100" data-action="zoom" data-slot="1" aria-label="Photo 2 size"></label>
-          <label class="zoom-bar" data-slot="2"><span>3</span><input type="range" min="100" max="300" value="100" data-action="zoom" data-slot="2" aria-label="Photo 3 size"></label>
-          <label class="zoom-bar" data-slot="3"><span>4</span><input type="range" min="100" max="300" value="100" data-action="zoom" data-slot="3" aria-label="Photo 4 size"></label>
-          <label class="zoom-bar" data-slot="4"><span>5</span><input type="range" min="100" max="300" value="100" data-action="zoom" data-slot="4" aria-label="Photo 5 size"></label>
+          <div class="zoom-bar" data-slot="0"><span>1</span><input type="range" min="100" max="300" value="100" data-action="zoom" data-slot="0" aria-label="Photo 1 size"><button type="button" class="lock-btn" data-action="lock" data-slot="0" aria-pressed="false" aria-label="Lock photo 1 view">Lock</button></div>
+          <div class="zoom-bar" data-slot="1"><span>2</span><input type="range" min="100" max="300" value="100" data-action="zoom" data-slot="1" aria-label="Photo 2 size"><button type="button" class="lock-btn" data-action="lock" data-slot="1" aria-pressed="false" aria-label="Lock photo 2 view">Lock</button></div>
+          <div class="zoom-bar" data-slot="2"><span>3</span><input type="range" min="100" max="300" value="100" data-action="zoom" data-slot="2" aria-label="Photo 3 size"><button type="button" class="lock-btn" data-action="lock" data-slot="2" aria-pressed="false" aria-label="Lock photo 3 view">Lock</button></div>
+          <div class="zoom-bar" data-slot="3"><span>4</span><input type="range" min="100" max="300" value="100" data-action="zoom" data-slot="3" aria-label="Photo 4 size"><button type="button" class="lock-btn" data-action="lock" data-slot="3" aria-pressed="false" aria-label="Lock photo 4 view">Lock</button></div>
+          <div class="zoom-bar" data-slot="4"><span>5</span><input type="range" min="100" max="300" value="100" data-action="zoom" data-slot="4" aria-label="Photo 5 size"><button type="button" class="lock-btn" data-action="lock" data-slot="4" aria-pressed="false" aria-label="Lock photo 5 view">Lock</button></div>
         </div>
       </div>
       <div class="split-resize" id="splitResize" hidden>
@@ -603,7 +638,7 @@
     </div>
   </div>
 
-  <footer class="site-footer">Photo Collage Maker <span data-version-slot>v1.3.5</span></footer>
+  <footer class="site-footer">Photo Collage Maker <span data-version-slot>v1.3.6</span></footer>
 
 <script>
 (function(){
@@ -653,15 +688,19 @@
   var slots = slotEls.map(function(el){
     var index = el.getAttribute("data-index");
     var zoomInput = document.querySelector('#sizeRail [data-action="zoom"][data-slot="' + index + '"]');
+    var zoomBar = zoomInput ? zoomInput.closest(".zoom-bar") : null;
     return {
       el: el,
       zoomInput: zoomInput,
-      zoomBar: zoomInput ? zoomInput.closest(".zoom-bar") : null,
+      zoomBar: zoomBar,
+      removeBtn: document.querySelector('#clearRow [data-action="remove"][data-slot="' + index + '"]'),
+      lockBtn: zoomBar ? zoomBar.querySelector('[data-action="lock"]') : null,
       img: null,
       dataURL: null,
       zoom: 1,
       panX: 0.5,
       panY: 0.5,
+      locked: false,
       pointers: {},
       gesture: null
     };
@@ -744,9 +783,18 @@
   }
 
   function syncZoomBar(slot){
-    if (!slot.zoomBar) return;
     var show = !!(slot.img && slot.img.naturalWidth && !slot.el.classList.contains("hidden"));
-    slot.zoomBar.classList.toggle("is-active", show);
+    if (slot.zoomBar) slot.zoomBar.classList.toggle("is-active", show);
+    if (slot.removeBtn) slot.removeBtn.classList.toggle("is-active", show);
+    var locked = !!(slot.locked && show);
+    slot.el.classList.toggle("locked", locked);
+    if (slot.zoomInput) slot.zoomInput.disabled = locked;
+    if (slot.lockBtn){
+      slot.lockBtn.setAttribute("aria-pressed", locked ? "true" : "false");
+      slot.lockBtn.textContent = locked ? "Locked" : "Lock";
+      var n = String(Number(slot.el.getAttribute("data-index")) + 1);
+      slot.lockBtn.setAttribute("aria-label", (locked ? "Unlock photo " : "Lock photo ") + n + " view");
+    }
   }
 
   function renderSlot(slot){
@@ -1468,7 +1516,8 @@
 
   function bindSlot(slot){
     var fileInput = slot.el.querySelector('[data-action="file"]');
-    var removeBtn = slot.el.querySelector('[data-action="remove"]');
+    var removeBtn = slot.removeBtn;
+    var lockBtn = slot.lockBtn;
     var zoomInput = slot.zoomInput;
     var listening = false;
 
@@ -1574,6 +1623,7 @@
       slot.zoom = 1;
       slot.panX = 0.5;
       slot.panY = 0.5;
+      slot.locked = false;
       slot.pointers = {};
       slot.gesture = null;
       clearHold();
@@ -1581,14 +1631,28 @@
       renderSlot(slot);
     });
 
+    lockBtn.addEventListener("click", function(e){
+      e.stopPropagation();
+      slot.locked = !slot.locked;
+      if (slot.locked){
+        slot.pointers = {};
+        slot.gesture = null;
+        slot.el.classList.remove("dragging");
+        clearHold();
+        endListening();
+      }
+      syncZoomBar(slot);
+    });
+
     zoomInput.addEventListener("click", function(e){ e.stopPropagation(); });
     zoomInput.addEventListener("input", function(e){
+      if (slot.locked) return;
       slot.zoom = clamp(parseInt(e.target.value, 10) / 100, MIN_ZOOM, MAX_ZOOM);
       renderSlot(slot);
     });
 
     slot.el.addEventListener("pointerdown", function(e){
-      if (!slot.img) return;
+      if (!slot.img || slot.locked) return;
       if (e.target.closest(".remove-btn, .zoom-bar, input, button")) return;
       if (e.pointerType === "mouse" && e.button !== 0) return;
       var pt = {
@@ -1623,7 +1687,7 @@
     });
 
     slot.el.addEventListener("wheel", function(e){
-      if (!slot.img) return;
+      if (!slot.img || slot.locked) return;
       if (e.target.closest("input, button, .zoom-bar")) return;
       e.preventDefault();
       var rect = slot.el.getBoundingClientRect();
