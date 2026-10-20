@@ -607,6 +607,90 @@ try {
   assert(lockedView.unlocked, "lock toggles back off");
   near(lockedView.unlockedZoom, 2.2, 0.001, "Size slider zooms again after unlock");
 
+  const lockedResize = await page.evaluate(() => {
+    function widths() {
+      return [...document.querySelectorAll(".slot:not(.hidden)")].map((el) => el.getBoundingClientRect().width);
+    }
+    function dragSeam(el, dx, id) {
+      const r = el.getBoundingClientRect();
+      const x = r.left + r.width / 2;
+      const y = r.top + r.height / 2;
+      el.dispatchEvent(new PointerEvent("pointerdown", {
+        bubbles: true, cancelable: true, clientX: x, clientY: y, pointerId: id, pointerType: "mouse", button: 0
+      }));
+      document.dispatchEvent(new PointerEvent("pointermove", {
+        bubbles: true, cancelable: true, clientX: x + dx, clientY: y, pointerId: id, pointerType: "mouse"
+      }));
+      document.dispatchEvent(new PointerEvent("pointerup", {
+        bubbles: true, cancelable: true, clientX: x + dx, clientY: y, pointerId: id, pointerType: "mouse"
+      }));
+    }
+    window.__collage.applyLayout("2v");
+    window.__collage.resetCells();
+    const lock = document.querySelector('#sizeRail [data-action="lock"][data-slot="0"]');
+    lock.click();
+    const before = widths();
+    const seam = document.querySelector(".seam-v");
+    dragSeam(seam, 90, 93);
+    seam.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }));
+    seam.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
+    const afterBar = widths();
+    const blocked = seam.classList.contains("is-locked") && seam.getAttribute("aria-disabled") === "true";
+    lock.click();
+    dragSeam(document.querySelector(".seam-v"), 90, 94);
+    const afterUnlock = widths();
+    window.__collage.applyLayout("3v");
+    window.__collage.resetCells();
+    document.querySelector('#sizeRail [data-action="lock"][data-slot="0"]').click();
+    const before3 = widths();
+    const seams = [...document.querySelectorAll(".seam-v")];
+    dragSeam(seams[1], 70, 95);
+    const afterFar = widths();
+    dragSeam(seams[0], 70, 96);
+    const afterNear = widths();
+    document.querySelector('#sizeRail [data-action="lock"][data-slot="0"]').click();
+    window.__collage.applyLayout("ls");
+    window.__collage.resetCells();
+    document.querySelector('#sizeRail [data-action="lock"][data-slot="1"]').click();
+    const squareBefore = document.querySelector('.slot[data-index="1"]').getBoundingClientRect().width;
+    dragSeam(document.querySelector(".seam-v"), 60, 97);
+    const track = document.getElementById("splitTrack");
+    const tr = track.getBoundingClientRect();
+    track.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true, cancelable: true, clientX: tr.right - 8, clientY: tr.top + tr.height / 2, pointerId: 98, pointerType: "mouse", button: 0
+    }));
+    document.dispatchEvent(new PointerEvent("pointerup", {
+      bubbles: true, cancelable: true, clientX: tr.right - 8, clientY: tr.top + tr.height / 2, pointerId: 98, pointerType: "mouse"
+    }));
+    const squareAfter = document.querySelector('.slot[data-index="1"]').getBoundingClientRect().width;
+    document.querySelector('#sizeRail [data-action="lock"][data-slot="1"]').click();
+    window.__collage.applyLayout("2v");
+    window.__collage.resetCells();
+    window.__collage.slots[0].zoom = 1.8;
+    window.__collage.renderAll();
+    return {
+      blocked,
+      before,
+      afterBar,
+      afterUnlock,
+      before3,
+      afterFar,
+      afterNear,
+      squareBefore,
+      squareAfter,
+      unlocked: !window.__collage.slots[0].locked && !window.__collage.slots[1].locked
+    };
+  });
+  assert(lockedResize.blocked, "resize bar is marked locked");
+  near(lockedResize.afterBar[0], lockedResize.before[0], 1, "pushing the bar does not enlarge a locked cell");
+  near(lockedResize.afterBar[1], lockedResize.before[1], 1, "pushing the bar does not shrink the neighbor of a locked cell");
+  assert(lockedResize.afterUnlock[0] > lockedResize.before[0] + 40, "the same bar resizes again after unlock");
+  near(lockedResize.afterFar[0], lockedResize.before3[0], 1, "a bar that does not touch the locked cell leaves it the same size");
+  assert(Math.abs(lockedResize.afterFar[2] - lockedResize.before3[2]) > 20, "a distant bar can still resize an unlocked cell");
+  near(lockedResize.afterNear[0], lockedResize.before3[0], 1, "the bar beside a locked cell does not enlarge it");
+  near(lockedResize.squareAfter, lockedResize.squareBefore, 1, "square size and the L bar do not resize a locked square");
+  assert(lockedResize.unlocked, "cells are unlocked again");
+
   const wheelZoom = await page.evaluate(() => {
     const slot = document.querySelector('.slot[data-index="0"]');
     const r = slot.getBoundingClientRect();
