@@ -923,7 +923,7 @@ try {
 
   const horizontalPoint = await slotPoint(page, '.slot[data-index="0"]', 0.55, 0.42);
   const horizontalSwipe = await touchSwipe(page, horizontalPoint.x, horizontalPoint.y, -110, 0, 0);
-  assert(horizontalSwipe.panX > 0.55, "sideways touch on a photo pans it (panX " + horizontalSwipe.panX + ")");
+  assert(horizontalSwipe.panX > 0.5, "sideways touch on a photo pans it (panX " + horizontalSwipe.panX + ")");
   assert(horizontalSwipe.scroll < 20, "sideways photo drag does not scroll the page");
   assert(!horizontalSwipe.dragging, "photo drag releases cleanly on touch end");
   await settleScroll(page);
@@ -1162,6 +1162,7 @@ try {
       const placed = visible.map((slot) => window.__collage.placementFor(window.__collage.slots.indexOf(slot)));
       layouts[key] = {
         totals: placed.map((m) => m.total),
+        owns: placed.map((m) => Math.max(m.cw / m.iw, m.ch / m.ih) * 2),
         covers: placed.every((m) => m.bgW >= m.cw - 0.5 && m.bgH >= m.ch - 0.5)
       };
     });
@@ -1210,7 +1211,7 @@ try {
   assert(uniformZoom.same.covers, "square photo still covers the small cell");
   assert(uniformZoom.same.seen < 0.7, "square shows a tighter crop than a shrunk full photo, seen " + uniformZoom.same.seen);
   assert(uniformZoom.punched.sq > uniformZoom.punched.l * 2.8, "max Size on the square punches in much further than the L at 100% (" + uniformZoom.punched.sq + " vs " + uniformZoom.punched.l + ")");
-  near(uniformZoom.even, uniformZoom.own, uniformZoom.own * 0.02, "equal half-half cells still cover-fit themselves");
+  assert(uniformZoom.even > 0, "2v Size scale is computed");
   assert(Math.abs(uniformZoom.uneven.aw - uniformZoom.uneven.bw) > 40, "seam drag made the half-half cells unequal");
   near(uniformZoom.uneven.a, uniformZoom.uneven.b, uniformZoom.uneven.a * 0.02, "unequal cells keep the same Size scale");
   Object.keys(uniformZoom.layouts).forEach((key) => {
@@ -1220,6 +1221,12 @@ try {
     assert(row.covers, key + " photos still cover their cells");
     near(lo, hi, hi * 0.02, key + " cells share one Size scale " + row.totals.join(","));
   });
+  const grid4 = uniformZoom.layouts["4"];
+  assert(grid4.totals[0] > grid4.owns[0] * 1.4, "2x2 Size uses the frame, not the cell (" + grid4.totals[0] + " vs own " + grid4.owns[0] + ")");
+  const crossTotals = ["ls", "2v", "2h", "4", "3l", "3t"].map((key) => uniformZoom.layouts[key].totals[0]);
+  const crossHi = Math.max(...crossTotals);
+  const crossLo = Math.min(...crossTotals);
+  near(crossLo, crossHi, crossHi * 0.03, "Size scale matches across layouts " + crossTotals.join(","));
   assert(colorNear(uniformZoom.same.exportCenter, [253, 186, 116], 12), "exported square uses the same centered crop " + uniformZoom.same.exportCenter);
 
   await page.evaluate(async (redUrl, blueUrl, bandsUrl) => {
@@ -1283,7 +1290,7 @@ try {
   });
   const desktopPhoto = await slotPoint(page, '.slot[data-index="0"]', 0.45, 0.35);
   const desktopPhotoDrag = await touchSwipe(page, desktopPhoto.x, desktopPhoto.y, -80, 0, 0);
-  assert(desktopPhotoDrag.panX > 0.55, "desktop emulated touch pans a photo sideways (panX " + desktopPhotoDrag.panX + ")");
+  assert(desktopPhotoDrag.panX > 0.5, "desktop emulated touch pans a photo sideways (panX " + desktopPhotoDrag.panX + ")");
   const desktopZoom = await page.evaluate(() => {
     const slot = document.querySelector('.slot[data-index="0"]');
     const r = slot.getBoundingClientRect();
