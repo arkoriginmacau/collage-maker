@@ -62,6 +62,18 @@ try {
   const apiVersion = await page.evaluate(() => window.__collage.version());
   assert(apiVersion === pkg.version, "api version mismatch");
 
+  const downloadNames = await page.evaluate(() => {
+    const fn = window.__collage.downloadName;
+    return {
+      evening: fn(new Date("2026-11-15T11:12:00.000Z")),
+      afterMidnight: fn(new Date("2026-11-15T16:05:00.000Z")),
+      midnight: fn(new Date("2026-11-14T16:00:00.000Z"))
+    };
+  });
+  assert(downloadNames.evening === "ArkOrigin-collage-2026-11-15-1912.jpg", "Macau evening name, got " + downloadNames.evening);
+  assert(downloadNames.afterMidnight === "ArkOrigin-collage-2026-11-16-0005.jpg", "Macau past midnight name, got " + downloadNames.afterMidnight);
+  assert(downloadNames.midnight === "ArkOrigin-collage-2026-11-15-0000.jpg", "Macau midnight name, got " + downloadNames.midnight);
+
   const touchAction = await page.evaluate(() => {
     function ta(sel) {
       return getComputedStyle(document.querySelector(sel)).touchAction;
