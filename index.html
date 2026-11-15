@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="app-version" content="1.3.9">
+<meta name="app-version" content="1.3.10">
 <title>Photo Collage Maker</title>
 <style>
   :root{
@@ -590,7 +590,7 @@
     </div>
   </div>
 
-  <footer class="site-footer">Photo Collage Maker <span data-version-slot>v1.3.9</span></footer>
+  <footer class="site-footer">Photo Collage Maker <span data-version-slot>v1.3.10</span></footer>
 
 <script>
 (function(){
@@ -1699,6 +1699,22 @@
     resetCells();
   });
 
+  function collageDownloadName(now) {
+    var parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Macau",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23"
+    }).formatToParts(now || new Date());
+    var map = {};
+    for (var i = 0; i < parts.length; i++) map[parts[i].type] = parts[i].value;
+    function two(v){ v = String(v); return v.length < 2 ? "0" + v : v; }
+    return "ArkOrigin-collage-" + map.year + "-" + two(map.month) + "-" + two(map.day) + "-" + two(map.hour) + two(map.minute) + ".jpg";
+  }
+
   document.getElementById("downloadBtn").addEventListener("click", function(){
     var hasAny = slots.some(function(s){ return s.img && !s.el.classList.contains("hidden"); });
     if (!hasAny){
@@ -1707,7 +1723,7 @@
     }
     var exportEl = exportCollage();
     var link = document.createElement("a");
-    link.download = "collage.jpg";
+    link.download = collageDownloadName();
     link.href = exportEl.toDataURL("image/jpeg", 0.85);
     document.body.appendChild(link);
     link.click();
@@ -1785,6 +1801,7 @@
   window.__collage = {
     applyLayout: applyLayout,
     exportCollage: exportCollage,
+    downloadName: collageDownloadName,
     slots: slots,
     getSplits: function(){ return getSplits(currentLayout); },
     resetCells: resetCells,
